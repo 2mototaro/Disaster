@@ -138,6 +138,21 @@
       border: 1.5px solid rgba(255,255,255,0.4);
     }
 
+    .legend-summary {
+      cursor: pointer;
+      list-style: none;
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 11px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: rgba(200,210,255,0.6);
+      user-select: none;
+    }
+    .legend-summary::-webkit-details-marker { display: none; }
+    .legend-summary::after { content: '▾'; float: right; margin-left: 8px; }
+    .legend[open] .legend-summary::after { content: '▴'; }
+    .legend-body { margin-top: 8px; }
+
     /* STATUS */
     .status {
       bottom: 20px; right: 16px;
@@ -154,6 +169,18 @@
       color: #30ff90;
       font-weight: bold;
     }
+
+    .spinner {
+      display: none;
+      width: 9px; height: 9px;
+      border: 2px solid rgba(255,255,255,0.25);
+      border-top-color: #30ff90;
+      border-radius: 50%;
+      margin-left: 6px;
+      vertical-align: middle;
+      animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
 
     /* BREAKING NEWS */
     .breaking-news {
@@ -218,6 +245,82 @@
     }
     .leaflet-popup-tip { background: rgba(10,14,28,0.96) !important; }
     .leaflet-popup-close-button { color: rgba(255,255,255,0.5) !important; }
+
+    .status-time-mobile { display: none; }
+
+    /* === MOBILE === */
+    @media (max-width: 640px) {
+      body { overscroll-behavior: none; }
+
+      .breaking-news { font-size: 11px; }
+      .breaking-news .label { padding: 6px 10px; font-size: 9px; }
+      .ticker span { padding: 6px 0 6px 100%; }
+
+      /* Layer toggle panel → compact row right under the ticker, full width */
+      .panel {
+        top: calc(38px + env(safe-area-inset-top, 0px));
+        left: 8px; right: 8px; width: auto;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 10px 12px;
+        gap: 4px;
+      }
+      .panel h2 { display: none; }
+      .toggle {
+        flex-direction: column;
+        align-items: center;
+        gap: 5px;
+        margin: 0;
+        font-size: 10px;
+        touch-action: manipulation;
+      }
+      .toggle .dot { width: 34px; height: 20px; }
+      .toggle-label { flex-direction: column; gap: 3px; }
+
+      /* Realtime label box hidden — time shown inline in the status pill instead */
+      .topbar { display: none; }
+      .status-time-mobile { display: inline; }
+
+      /* Legend → compact, drop the magnitude scale demo dots to save width */
+      .legend {
+        left: 8px; bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+        padding: 8px 10px;
+        font-size: 10px;
+        line-height: 1.6;
+        max-width: 46%;
+      }
+      .legend-sizes { display: none; }
+      .legend-scale-note { display: none; }
+
+      .status {
+        right: 8px; bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+        padding: 6px 10px;
+        font-size: 10px;
+      }
+
+      .leaflet-control-zoom {
+        margin-right: 8px !important;
+        margin-bottom: 90px !important;
+      }
+    }
+
+    /* === MOBILE LANDSCAPE — จอกว้างพอแต่สูงจำกัด ต้องประหยัดพื้นที่แนวตั้ง === */
+    @media (max-width: 900px) and (orientation: landscape) {
+      .breaking-news .label { padding: 4px 8px; }
+      .ticker span { padding: 4px 0 4px 100%; }
+
+      .panel { top: 30px; padding: 6px 10px; }
+      .toggle { font-size: 9px; }
+      .toggle .dot { width: 30px; height: 18px; }
+
+      .legend { padding: 6px 10px; font-size: 9px; line-height: 1.4; max-width: 40%; }
+      .legend-summary { font-size: 9px; }
+
+      .status { padding: 4px 8px; font-size: 9px; }
+
+      .leaflet-control-zoom { margin-bottom: 8px !important; }
+    }
   </style>
 </head>
 
@@ -264,30 +367,34 @@
 </div>
 
 <!-- LEGEND -->
-<div class="legend ui-overlay">
-  <div class="legend-row">
-    <span class="toggle-badge" style="background:var(--eq); box-shadow:0 0 5px var(--eq); width:10px;height:10px;border-radius:50%;display:inline-block;"></span>
-    Earthquake
-    <span class="legend-sizes">
-      <span class="legend-dot" style="width:8px;height:8px;background:var(--eq);opacity:.6;"></span>
-      <span class="legend-dot" style="width:14px;height:14px;background:var(--eq);opacity:.8;"></span>
-      <span class="legend-dot" style="width:22px;height:22px;background:var(--eq);"></span>
-    </span>
-    <span style="font-size:10px;color:rgba(200,210,255,0.5);">M1 → M7+</span>
+<details class="legend ui-overlay" open>
+  <summary class="legend-summary">Legend</summary>
+  <div class="legend-body">
+    <div class="legend-row">
+      <span class="toggle-badge" style="background:var(--eq); box-shadow:0 0 5px var(--eq); width:10px;height:10px;border-radius:50%;display:inline-block;"></span>
+      Earthquake
+      <span class="legend-sizes">
+        <span class="legend-dot" style="width:8px;height:8px;background:var(--eq);opacity:.6;"></span>
+        <span class="legend-dot" style="width:14px;height:14px;background:var(--eq);opacity:.8;"></span>
+        <span class="legend-dot" style="width:22px;height:22px;background:var(--eq);"></span>
+      </span>
+      <span class="legend-scale-note" style="font-size:10px;color:rgba(200,210,255,0.5);">M1 → M7+</span>
+    </div>
+    <div class="legend-row">
+      <span style="width:10px;height:10px;border-radius:50%;background:var(--wf);box-shadow:0 0 5px var(--wf);display:inline-block;"></span>
+      Wildfire
+    </div>
+    <div class="legend-row">
+      <span style="width:10px;height:10px;border-radius:50%;background:var(--fl);box-shadow:0 0 5px var(--fl);display:inline-block;"></span>
+      Flood
+    </div>
   </div>
-  <div class="legend-row">
-    <span style="width:10px;height:10px;border-radius:50%;background:var(--wf);box-shadow:0 0 5px var(--wf);display:inline-block;"></span>
-    Wildfire
-  </div>
-  <div class="legend-row">
-    <span style="width:10px;height:10px;border-radius:50%;background:var(--fl);box-shadow:0 0 5px var(--fl);display:inline-block;"></span>
-    Flood
-  </div>
-</div>
+</details>
 
 <!-- STATUS -->
 <div class="status ui-overlay">
-  Status: <span id="status">Loading...</span>
+  Status: <span id="status">Loading...</span><span id="spinner" class="spinner"></span>
+  <span class="status-time-mobile"> · <span id="time-mobile"></span></span>
 </div>
 <div class="breaking-news ui-overlay">
   <span class="label">BREAKING</span>
@@ -303,6 +410,16 @@
     zoomControl: false
   }).setView([13.7563, 100.5018], 4);
 
+  // มือถือ: เพิ่มปุ่ม +/- ซูมกลับมา เพราะ pinch-to-zoom อย่างเดียวใช้งานลำบากกว่าตอนมือถือถือด้วยมือเดียว
+  if (window.matchMedia('(max-width: 640px)').matches) {
+    L.control.zoom({ position: 'bottomright' }).addTo(map);
+  }
+
+  // มือถือ: ให้ legend เริ่มต้นแบบพับเก็บ ประหยัดพื้นที่จอ (คลิก/แตะเพื่อกางดูได้)
+  if (window.matchMedia('(max-width: 640px)').matches) {
+    document.querySelector('.legend').removeAttribute('open');
+  }
+
     L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
         attribution: '&copy; OpenStreetMap & Carto',
     }).addTo(map);
@@ -317,13 +434,14 @@
       const COLORS = { eq: "#ff3b30", wf: "#ff9500", fl: "#30a0ff" };
       const color = COLORS[type] || "#999";
       const s = size || 14;
+      const hit = Math.max(s, 30); // ขยายพื้นที่แตะขั้นต่ำ 30px โดยไม่เปลี่ยนขนาดจุดที่มองเห็น (สำคัญมากบนมือถือ)
 
       // pulse ring แสดงเฉพาะ earthquake ขนาดใหญ่ (>= 20px = mag ~4+)
       const showPulse = (type === "eq" && s >= 20);
       const ringSize = s * 2.5;
       const ringOffset = -(ringSize - s) / 2;
 
-      const html = `
+      const dotHtml = `
         <div style="position:relative; width:${s}px; height:${s}px;">
           ${showPulse ? `
           <div class="pulse-ring" style="
@@ -342,22 +460,31 @@
           "></div>
         </div>`;
 
+      const html = `
+        <div style="width:${hit}px; height:${hit}px; display:flex; align-items:center; justify-content:center;">
+          ${dotHtml}
+        </div>`;
+
       const icon = L.divIcon({
         html,
         className: '',
-        iconSize: [s, s],
-        iconAnchor: [s / 2, s / 2]
+        iconSize: [hit, hit],
+        iconAnchor: [hit / 2, hit / 2]
       });
 
-      return L.marker([lat, lng], { icon }).bindPopup(popup, { maxWidth: 260 });
+      const popupMaxWidth = window.innerWidth < 400 ? 200 : 260;
+      return L.marker([lat, lng], { icon }).bindPopup(popup, { maxWidth: popupMaxWidth, autoPanPadding: [16, 16] });
     }
-    async function loadAlerts() {
+    async function loadAlerts(eqDataPromise) {
         //console.log("loadAlerts RUNNING 🔥");
         let alerts = [];
 
-        // 🌍 Earthquake
-        const eqRes = await fetch('https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.geojson');
-        const eqData = await eqRes.json();
+        // ยิง earthquake + EONET พร้อมกัน (เดิมรอทีละอันเรียงกัน)
+        // ถ้ามี eqDataPromise ที่ loadData() กำลังยิงอยู่แล้ว ใช้อันเดียวกันเลย ไม่ fetch ซ้ำ
+        const [eqData, eonetData] = await Promise.all([
+          eqDataPromise || fetchJSON('https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.geojson'),
+          fetchJSON('https://eonet.gsfc.nasa.gov/api/v3/events?status=open')
+        ]);
 
         //console.log(eqData);
 
@@ -369,9 +496,6 @@
             });
 
         // 🔥 + 🌊 EONET
-        const eonetRes = await fetch('https://eonet.gsfc.nasa.gov/api/v3/events?status=open');
-        const eonetData = await eonetRes.json();
-
         eonetData.events.slice(0, 3).forEach(ev => {
             alerts.push(`⚠️ ${ev.title}`);
         });
@@ -390,6 +514,11 @@
    }
    
   let lastAlerts = [];
+
+  async function fetchJSON(url) {
+    const res = await fetch(url);
+    return res.json();
+  }
 
   // ── Global geocoding ─────────────────────────────────────────
   const GEOCODE_API_KEY = '69fdad57cf850933585115gmlce2259';
@@ -423,6 +552,30 @@
   }
   // ─────────────────────────────────────────────────────────────
 
+  // ── Background geocode queue ────────────────────────────────
+  // ทุก geocode call (wildfire + flood) วิ่งผ่านคิวนี้ที่เดียว เว้นจังหวะ 1.1 วิ/ครั้ง
+  // เพื่อไม่ชน rate limit ของ geocode.maps.co แต่ทำงานแยกจาก loadData() โดยสิ้นเชิง
+  // ทำให้ marker ทุกจุดขึ้นและ status เป็น "Live" ได้ทันทีโดยไม่ต้องรอคิวนี้เลย
+  const geoQueue = [];
+  let geoQueueRunning = false;
+
+  function queueGeocode(task) {
+    geoQueue.push(task);
+    runGeoQueue();
+  }
+
+  async function runGeoQueue() {
+    if (geoQueueRunning) return;
+    geoQueueRunning = true;
+    while (geoQueue.length) {
+      const task = geoQueue.shift();
+      try { await task(); } catch (e) { console.warn('Geo queue task error:', e); }
+      await new Promise(r => setTimeout(r, 1100));
+    }
+    geoQueueRunning = false;
+  }
+  // ─────────────────────────────────────────────────────────────
+
   function makeFloodPopup(title, locationLine, eventDate, mapsUrl) {
     return `
       <div style="line-height:1.6; min-width:210px;">
@@ -434,27 +587,89 @@
       </div>`;
   }
 
-  async function geocodeAndPin(lat, lng, title, eventDate, layer) {
+  function pinFlood(lat, lng, title, eventDate, layer) {
     const plusCode = OpenLocationCode.encode(lat, lng, 10);
     const mapsUrl = `https://www.google.com/maps/search/${encodeURIComponent(plusCode)}`;
-    const initLine = `<span style="color:rgba(200,210,255,0.5);font-size:12px;">${lat.toFixed(3)}°, ${lng.toFixed(3)}°</span>`;
+    const key = `${lat.toFixed(2)},${lng.toFixed(2)}`;
+    const cached = geoCache[key];
+
+    const initLine = cached?.province
+      ? `${cached.province}${cached.country && cached.country !== cached.province
+          ? ` <span style="color:rgba(200,210,255,0.5);font-size:11px;">(${cached.country})</span>` : ''}`
+      : `<span style="color:rgba(200,210,255,0.5);font-size:12px;">${lat.toFixed(3)}°, ${lng.toFixed(3)}°</span>`;
+
     const m = createMarker(lat, lng, 'fl', makeFloodPopup(title, initLine, eventDate, mapsUrl));
     m.addTo(layer);
 
-    // geocode background
-    const geo = await reverseGeocode(lat, lng);
-    if (geo.province) {
-      const locLine = `${geo.province}${geo.country && geo.country !== geo.province
-        ? ` <span style="color:rgba(200,210,255,0.5);font-size:11px;">(${geo.country})</span>` : ''}`;
-      m.setPopupContent(makeFloodPopup(title, locLine, eventDate, mapsUrl));
+    if (!cached) {
+      queueGeocode(async () => {
+        const geo = await reverseGeocode(lat, lng);
+        if (geo.province) {
+          const locLine = `${geo.province}${geo.country && geo.country !== geo.province
+            ? ` <span style="color:rgba(200,210,255,0.5);font-size:11px;">(${geo.country})</span>` : ''}`;
+          m.setPopupContent(makeFloodPopup(title, locLine, eventDate, mapsUrl));
+        }
+      });
     }
+    return m;
   }
+
+  function makeWildfirePopup(title, locationLine, eventDate, mapsUrl) {
+    return `
+      <div style="line-height:1.6; min-width:210px;">
+        <strong style="font-size:14px; color:#ff9500;">🔥 ${title}</strong><br>
+        <hr style="margin:4px 0; border-color:rgba(255,255,255,0.1);">
+        📍 ${locationLine}<br>
+        ${eventDate ? `🗓 ${eventDate}<br>` : ''}
+        <a href="${mapsUrl}" target="_blank" style="font-size:12px; color:#ff9500;">ดูบน Google Maps →</a>
+      </div>`;
+  }
+
+  function updateWildfirePopup(m, lat, lng, title, eventDate, mapsUrl) {
+    return async () => {
+      const geo = await reverseGeocode(lat, lng);
+      if (geo.province) {
+        const locLine = `${geo.province}${geo.country && geo.country !== geo.province
+          ? ` <span style="color:rgba(200,210,255,0.5);font-size:11px;">(${geo.country})</span>` : ''}`;
+        m.setPopupContent(makeWildfirePopup(title, locLine, eventDate, mapsUrl));
+      }
+    };
+  }
+
+  // ── fetch พร้อม timeout + retry สำหรับ Flood API โดยเฉพาะ ──────
+  // ป้องกันไม่ให้ Flood API ที่ตอบช้าหรือค้าง ทำให้ loadData() ต้องรอนาน
+  async function fetchWithTimeoutRetry(url, { timeoutMs = 8000, retries = 2, retryDelayMs = 1000, fetchOpts = {} } = {}) {
+    let lastErr;
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        const res = await fetch(url, { ...fetchOpts, signal: controller.signal });
+        clearTimeout(timer);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return await res.json();
+      } catch (err) {
+        clearTimeout(timer);
+        lastErr = err;
+        const isTimeout = err.name === 'AbortError';
+        console.warn(`⚠️ Flood fetch attempt ${attempt + 1}/${retries + 1} failed (${isTimeout ? 'timeout' : err.message}): ${url}`);
+        if (attempt < retries) {
+          await new Promise(r => setTimeout(r, retryDelayMs));
+        }
+      }
+    }
+    throw lastErr;
+  }
+  // ─────────────────────────────────────────────────────────────
 
   async function loadFloods() {
     layers.flood.clearLayers();
     try {
-      const res = await fetch('https://eonet.gsfc.nasa.gov/api/v3/events?category=floods&status=open');
-      const data = await res.json();
+      // ✅ เรียกข้อมูล Flood สดโดยตรงจาก EONET (live API) เป็นแหล่งหลัก
+      const data = await fetchWithTimeoutRetry(
+        'https://eonet.gsfc.nasa.gov/api/v3/events?category=floods&status=open',
+        { timeoutMs: 8000, retries: 2, retryDelayMs: 1200 }
+      );
 
       if (data.events && data.events.length > 0) {
         const jobs = [];
@@ -466,24 +681,29 @@
           jobs.push({ lat, lng, title: flood.title, eventDate });
         }
 
-        // ปัก marker ทั้งหมดก่อน แล้วค่อย geocode ทีละตัว rate-limited
+        // ปัก marker ทั้งหมดทันที ไม่มี delay ในลูปนี้เลย — geocode วิ่งผ่านคิวเบื้องหลังแยกต่างหาก
         for (const job of jobs) {
-          geocodeAndPin(job.lat, job.lng, job.title, job.eventDate, layers.flood);
-          await new Promise(r => setTimeout(r, 1200));
+          pinFlood(job.lat, job.lng, job.title, job.eventDate, layers.flood);
         }
+        console.log(`✅ Flood (EONET live): ${jobs.length} เหตุการณ์`);
       } else {
+        console.log('ℹ️ Flood (EONET live): ไม่มีเหตุการณ์เปิดอยู่ → ใช้ fallback (result.geojson)');
         await loadFloodsFromGDACS();
       }
     } catch (err) {
-      console.error("EONET error → fallback GDACS", err);
+      console.error('❌ EONET Flood error (หมด retry แล้ว) → fallback (result.geojson):', err.message);
       await loadFloodsFromGDACS();
     }
   }
 
+  // ⚠️ Fallback เท่านั้น — ใช้เมื่อ EONET live API ล้มเหลวหรือไม่มีข้อมูล
+  // result.geojson เป็นไฟล์สแนปช็อตสำรอง ไม่ใช่แหล่งข้อมูลหลักอีกต่อไป
   async function loadFloodsFromGDACS() {
     try {
-      const res = await fetch("result.geojson");
-      const data = await res.json();
+      const data = await fetchWithTimeoutRetry(
+        "result.geojson?t=" + Date.now(),
+        { timeoutMs: 5000, retries: 1, retryDelayMs: 800, fetchOpts: { cache: 'no-store' } }
+      );
 
       const today = new Date();
       const daysInCurrentMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
@@ -493,7 +713,7 @@
       // const endDate = new Date("2026-07-31");
       const startDate = new Date(endDate);
       startDate.setDate(endDate.getDate() - 60);
-      console.log(`Filtering GDACS data from: ${startDate.toLocaleDateString('th-TH')} to ${endDate.toLocaleDateString('th-TH')}`);
+      console.log(`🌊 Flood (fallback result.geojson) กรองช่วง: ${startDate.toLocaleDateString('th-TH')} - ${endDate.toLocaleDateString('th-TH')}`);
 
       const filtered = data.features.filter(f => {
         const eventTime = new Date(f.properties.datemodified);
@@ -505,7 +725,7 @@
         );
       });
 
-      console.log("FILTERED:", filtered.length);
+      console.log(`✅ Flood (fallback result.geojson): ${filtered.length} เหตุการณ์ (จากทั้งหมด ${data.features.length})`);
 
       for (const f of filtered) {
         const [lng, lat] = f.geometry.coordinates;
@@ -525,16 +745,20 @@
     }
   }
 
-  async function loadData() {
+  async function loadData(eqDataPromise) {
     document.getElementById('status').innerText = "Updating...";
+    document.getElementById('spinner').style.display = 'inline-block';
 
     layers.earthquake.clearLayers();
     layers.wildfire.clearLayers();
     layers.flood.clearLayers();
 
-    // 🌍 Earthquake
-    const eqRes = await fetch('https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.geojson');
-    const eqData = await eqRes.json();
+    // ยิงทั้ง 3 แหล่งข้อมูลพร้อมกันตั้งแต่ต้น (เดิมรอ eq → wildfire → flood เรียงกัน)
+    const floodsPromise = loadFloods();
+    const wfPromise = fetchJSON('https://eonet.gsfc.nasa.gov/api/v3/events?category=wildfires&status=all&days=30');
+
+    // 🌍 Earthquake — ใช้ promise ที่ยิงไว้แล้วตอนโหลดหน้าเว็บครั้งแรก ถ้ามี ไม่ fetch ซ้ำ
+    const eqData = await (eqDataPromise || fetchJSON('https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.geojson'));
 
     eqData.features.forEach(eq => {
       const [lng, lat] = eq.geometry.coordinates;
@@ -570,11 +794,11 @@
       m.addTo(layers.earthquake);
     });
 
-    // 🔥 Wildfire
-    const wfRes = await fetch('https://eonet.gsfc.nasa.gov/api/v3/events?category=wildfires&status=all&days=30');
-    const wfData = await wfRes.json();
+    // 🔥 Wildfire — request ยิงไปพร้อมกับ eq/flood ด้านบนแล้ว แค่มารอผลตรงนี้
+    const wfData = await wfPromise;
 
-    // geocode ก่อนปัก marker — ใช้ cache ทำให้ reload ครั้งต่อไปไม่ต้องยิง API ซ้ำ
+    // ปัก marker ทันทีด้วยพิกัดก่อน แล้วค่อย geocode หาชื่อจังหวัด/ประเทศแบบ background
+    // (ไม่ await ทำให้ marker ทุกจุดขึ้นพร้อมกันทันที ไม่ต้องรอทีละจุด)
     for (const f of wfData.events) {
       const g = f.geometry[0];
       if (!g) continue;
@@ -582,38 +806,36 @@
       const eventDate = g.date ? g.date.split('T')[0] : '';
       const plusCode = OpenLocationCode.encode(lat, lng, 10);
       const mapsUrl = `https://www.google.com/maps/search/${encodeURIComponent(plusCode)}`;
+      const key = `${lat.toFixed(2)},${lng.toFixed(2)}`;
 
-      // geocode ก่อน — ถ้ามี cache จะได้ทันที ถ้าไม่มีรอ API
-      const geo = await reverseGeocode(lat, lng);
-      const locationLine = geo.province
-        ? `${geo.province}${geo.country && geo.country !== geo.province
-            ? ` <span style="color:rgba(200,210,255,0.5);font-size:11px;">(${geo.country})</span>`
+      // ถ้ามี cache อยู่แล้วใช้ได้ทันที ไม่มีก็ขึ้นพิกัดไปก่อนแล้วอัปเดตทีหลัง
+      const cached = geoCache[key];
+      const locationLine = cached?.province
+        ? `${cached.province}${cached.country && cached.country !== cached.province
+            ? ` <span style="color:rgba(200,210,255,0.5);font-size:11px;">(${cached.country})</span>`
             : ''}`
         : `<span style="color:rgba(200,210,255,0.5);font-size:12px;">${lat.toFixed(3)}°, ${lng.toFixed(3)}°</span>`;
 
-      const popup = `
-        <div style="line-height:1.6; min-width:210px;">
-          <strong style="font-size:14px; color:#ff9500;">🔥 ${f.title}</strong><br>
-          <hr style="margin:4px 0; border-color:rgba(255,255,255,0.1);">
-          📍 ${locationLine}<br>
-          ${eventDate ? `🗓 ${eventDate}<br>` : ''}
-          <a href="${mapsUrl}" target="_blank" style="font-size:12px; color:#ff9500;">ดูบน Google Maps →</a>
-        </div>`;
-
-      const m = createMarker(lat, lng, 'wf', popup);
+      const m = createMarker(lat, lng, 'wf', makeWildfirePopup(f.title, locationLine, eventDate, mapsUrl));
       m.addTo(layers.wildfire);
 
-      // rate limit 1.2 วิ/ตัว เฉพาะตอนที่ไม่มี cache
-      if (!geoCache[`${lat.toFixed(2)},${lng.toFixed(2)}`]?.province) {
-        await new Promise(r => setTimeout(r, 1200));
+      // geocode แบบไม่บล็อกลูปเลย — เข้าคิวเบื้องหลังแยกต่างหาก
+      if (!cached) {
+        queueGeocode(updateWildfirePopup(m, lat, lng, f.title, eventDate, mapsUrl));
       }
     }
 
-    // 🌊 Flood — ✅ FIX: await ให้ถูกต้อง
-    await loadFloods();
+    // 🌊 Flood — request ยิงไปพร้อมกับอันอื่นตั้งแต่ต้นฟังก์ชันแล้ว ไม่ await ตรงนี้
+    // เพื่อไม่ให้ Flood ที่โหลดช้า (หรือ timeout/retry) บล็อก Earthquake/Wildfire และ Status "Live"
+    floodsPromise
+      .then(() => console.log('🌊 Flood loading เสร็จสิ้น (แบบไม่บล็อก status)'))
+      .catch(err => console.error('❌ Flood loading ล้มเหลวทั้งหมด (EONET + fallback):', err));
 
     document.getElementById('status').innerText = "Live";
-    document.getElementById('time').innerText = new Date().toLocaleTimeString();
+    document.getElementById('spinner').style.display = 'none';
+    const nowStr = new Date().toLocaleTimeString();
+    document.getElementById('time').innerText = nowStr;
+    document.getElementById('time-mobile').innerText = nowStr;
   }
 
   // Toggle layer
@@ -627,9 +849,11 @@
     e.target.checked ? map.addLayer(layers.flood) : map.removeLayer(layers.flood);
   };
 
-  loadData();
-  loadAlerts();
-  setInterval(loadData, 300000);
+  // โหลดครั้งแรก: ยิง earthquake ครั้งเดียว แชร์ผลลัพธ์ให้ทั้ง loadData และ loadAlerts ใช้ร่วมกัน
+  const initialEqPromise = fetchJSON('https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.geojson');
+  loadData(initialEqPromise);
+  loadAlerts(initialEqPromise);
+  setInterval(() => { loadData(); loadAlerts(); }, 300000);
       
 </script>
 
