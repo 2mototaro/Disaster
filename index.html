@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Disaster Monitor Dashboard</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --eq: #ff3b30;
+      --wf: #ff9500;
+      --fl: #30a0ff;
+      --bg: rgba(8, 12, 24, 0.92);
+      --border: rgba(255,255,255,0.08);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: 'Barlow', sans-serif;
+      background: #080c18;
+      color: #e0e8ff;
+    }
+
+    #map {
+      height: 100vh;
+      width: 100%;
+      filter: saturate(0.7) brightness(0.9);
+    }
+
+    /* === PANELS === */
+    .ui-overlay { z-index: 1000; position: absolute; }
+
+    .panel {
+      top: 48px; left: 16px;
+      width: 220px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 16px;
+      backdrop-filter: blur(12px);
+      box-shadow: 0 8px 32px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.07);
+    }
+
+    .panel h2 {
+      margin: 0 0 14px;
+      font-size: 13px;
+      font-family: 'Share Tech Mono', monospace;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: rgba(200,210,255,0.6);
+    }
+
+    .toggle {
+      display: flex;
+      align-items: center;
+      margin: 10px 0;
+      cursor: pointer;
+      gap: 10px;
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    /* custom checkbox */
+    .toggle input { display: none; }
+    .toggle .dot {
+      width: 36px; height: 20px;
+      background: rgba(255,255,255,0.1);
+      border-radius: 10px;
+      position: relative;
+      transition: background 0.3s;
+      flex-shrink: 0;
+      border: 1px solid rgba(255,255,255,0.15);
+    }
+    .toggle .dot::after {
+      content: '';
+      position: absolute;
+      width: 14px; height: 14px;
+      border-radius: 50%;
+      top: 2px; left: 2px;
+      background: white;
+      transition: transform 0.3s;
+    }
+    .toggle input:checked + .dot { background: var(--accent); }
+    .toggle input:checked + .dot::after { transform: translateX(16px); }
+
+    .toggle-eq .dot { --accent: var(--eq); }
+    .toggle-wf .dot { --accent: var(--wf); }
+    .toggle-fl .dot { --accent: var(--fl); }
+
+    .toggle-label { display: flex; align-items: center; gap: 7px; }
+    .toggle-badge {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      display: inline-block;
+      flex-shrink: 0;
+    }
+
+    /* TOP BAR */
+    .topbar {
+      top: 48px; right: 16px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      padding: 10px 16px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-family: 'Share Tech Mono', monospace;
+      color: rgba(200,210,255,0.7);
+      backdrop-filter: blur(12px);
+      text-align: right;
+      line-height: 1.8;
+    }
+
+    /* LEGEND */
+    .legend {
+      bottom: 20px; left: 16px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      padding: 12px 16px;
+      border-radius: 12px;
+      font-size: 12px;
+      backdrop-filter: blur(12px);
+      line-height: 2;
+    }
+
+    .legend-row { display: flex; align-items: center; gap: 10px; }
+    .legend-sizes {
+      display: flex; align-items: center; gap: 4px;
+      margin-left: 4px;
+    }
+    .legend-dot {
+      border-radius: 50%;
+      display: inline-block;
+      border: 1.5px solid rgba(255,255,255,0.4);
+    }
+
+    /* STATUS */
+    .status {
+      bottom: 20px; right: 16px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      padding: 8px 14px;
+      border-radius: 10px;
+      font-size: 12px;
+      font-family: 'Share Tech Mono', monospace;
+      backdrop-filter: blur(12px);
+    }
+
+    #status {
+      color: #30ff90;
+      font-weight: bold;
+    }
+
+    /* BREAKING NEWS */
+    .breaking-news {
+      top: 0; width: 100%;
+      background: linear-gradient(90deg, #8b0000, #cc0000);
+      color: white;
+      display: flex;
+      align-items: center;
+      font-weight: 700;
+      font-size: 13px;
+      z-index: 2000;
+      letter-spacing: 0.3px;
+      border-bottom: 1px solid rgba(255,100,100,0.4);
+    }
+
+    .label {
+      padding: 7px 14px;
+      background: rgba(0,0,0,0.35);
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 11px;
+      letter-spacing: 2px;
+      white-space: nowrap;
+      border-right: 1px solid rgba(255,100,100,0.3);
+    }
+
+    .ticker { white-space: nowrap; overflow: hidden; flex: 1; }
+    .ticker span {
+      display: inline-block;
+      padding: 7px 0 7px 100%;
+      animation: ticker 25s linear infinite;
+    }
+    .ticker:hover span {
+      animation-play-state: paused;
+    }
+
+    @keyframes ticker {
+      0%   { transform: translateX(0); }
+      100% { transform: translateX(-100%); }
+    }
+
+    /* === PULSE ANIMATION for large earthquakes === */
+    @keyframes pulse-ring {
+      0%   { transform: scale(1);   opacity: 0.7; }
+      100% { transform: scale(2.8); opacity: 0; }
+    }
+
+    .pulse-ring {
+      position: absolute;
+      border-radius: 50%;
+      animation: pulse-ring 1.8s ease-out infinite;
+      pointer-events: none;
+    }
+
+    /* Leaflet popup styling */
+    .leaflet-popup-content-wrapper {
+      background: rgba(10, 14, 28, 0.96) !important;
+      color: #dde8ff !important;
+      border: 1px solid rgba(255,255,255,0.1) !important;
+      border-radius: 10px !important;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.6) !important;
+      font-family: 'Barlow', sans-serif !important;
+    }
+    .leaflet-popup-tip { background: rgba(10,14,28,0.96) !important; }
+    .leaflet-popup-close-button { color: rgba(255,255,255,0.5) !important; }
+  </style>
+</head>
+
+<body>
+
+<div id="map"></div>
+
+<!-- PANEL -->
+<div class="panel ui-overlay">
+  <h2>⬡ Disaster Layers</h2>
+
+  <label class="toggle toggle-eq">
+    <input type="checkbox" checked id="eqToggle">
+    <span class="dot"></span>
+    <span class="toggle-label">
+      <span class="toggle-badge" style="background:var(--eq); box-shadow:0 0 6px var(--eq);"></span>
+      Earthquake
+    </span>
+  </label>
+
+  <label class="toggle toggle-wf">
+    <input type="checkbox" checked id="wfToggle">
+    <span class="dot"></span>
+    <span class="toggle-label">
+      <span class="toggle-badge" style="background:var(--wf); box-shadow:0 0 6px var(--wf);"></span>
+      Wildfire
+    </span>
+  </label>
+
+  <label class="toggle toggle-fl">
+    <input type="checkbox" checked id="flToggle">
+    <span class="dot"></span>
+    <span class="toggle-label">
+      <span class="toggle-badge" style="background:var(--fl); box-shadow:0 0 6px var(--fl);"></span>
+      Flood
+    </span>
+  </label>
+</div>
+
+<!-- TOP BAR -->
+<div class="topbar ui-overlay">
+  🔄 Realtime Monitoring<br>
+  Updated: <span id="time"></span>
+</div>
+
+<!-- LEGEND -->
+<div class="legend ui-overlay">
+  <div class="legend-row">
+    <span class="toggle-badge" style="background:var(--eq); box-shadow:0 0 5px var(--eq); width:10px;height:10px;border-radius:50%;display:inline-block;"></span>
+    Earthquake
+    <span class="legend-sizes">
+      <span class="legend-dot" style="width:8px;height:8px;background:var(--eq);opacity:.6;"></span>
+      <span class="legend-dot" style="width:14px;height:14px;background:var(--eq);opacity:.8;"></span>
+      <span class="legend-dot" style="width:22px;height:22px;background:var(--eq);"></span>
+    </span>
+    <span style="font-size:10px;color:rgba(200,210,255,0.5);">M1 → M7+</span>
+  </div>
+  <div class="legend-row">
+    <span style="width:10px;height:10px;border-radius:50%;background:var(--wf);box-shadow:0 0 5px var(--wf);display:inline-block;"></span>
+    Wildfire
+  </div>
+  <div class="legend-row">
+    <span style="width:10px;height:10px;border-radius:50%;background:var(--fl);box-shadow:0 0 5px var(--fl);display:inline-block;"></span>
+    Flood
+  </div>
+</div>
+
+<!-- STATUS -->
+<div class="status ui-overlay">
+  Status: <span id="status">Loading...</span>
+</div>
+<div class="breaking-news ui-overlay">
+  <span class="label">BREAKING</span>
+  <div class="ticker" id="ticker"></div>
+</div>
+
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/openlocationcode/1.0.4/openlocationcode.min.js"></script>
+<script>
+    console.log("FILE LOADED");
+
+  const map = L.map('map', {
+    zoomControl: false
+  }).setView([13.7563, 100.5018], 4);
+
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; OpenStreetMap & Carto',
+    }).addTo(map);
+
+    const layers = {
+        earthquake: L.layerGroup().addTo(map),
+        wildfire: L.layerGroup().addTo(map),
+        flood: L.layerGroup().addTo(map)
+    };
+
+    function createMarker(lat, lng, type, popup, size) {
+      const COLORS = { eq: "#ff3b30", wf: "#ff9500", fl: "#30a0ff" };
+      const color = COLORS[type] || "#999";
+      const s = size || 14;
+
+      // pulse ring แสดงเฉพาะ earthquake ขนาดใหญ่ (>= 20px = mag ~4+)
+      const showPulse = (type === "eq" && s >= 20);
+      const ringSize = s * 2.5;
+      const ringOffset = -(ringSize - s) / 2;
+
+      const html = `
+        <div style="position:relative; width:${s}px; height:${s}px;">
+          ${showPulse ? `
+          <div class="pulse-ring" style="
+            width:${ringSize}px; height:${ringSize}px;
+            border: 2px solid ${color};
+            top:${ringOffset}px; left:${ringOffset}px;
+          "></div>` : ''}
+          <div style="
+            width:${s}px; height:${s}px;
+            background: radial-gradient(circle at 35% 35%, ${color}ff, ${color}99);
+            border-radius: 50%;
+            box-shadow: 0 0 ${Math.round(s * 0.7)}px ${color}cc,
+                        0 0 ${Math.round(s * 1.4)}px ${color}44;
+            border: ${s >= 20 ? 2 : 1.5}px solid rgba(255,255,255,0.6);
+            position: absolute; top:0; left:0;
+          "></div>
+        </div>`;
+
+      const icon = L.divIcon({
+        html,
+        className: '',
+        iconSize: [s, s],
+        iconAnchor: [s / 2, s / 2]
+      });
+
+      return L.marker([lat, lng], { icon }).bindPopup(popup, { maxWidth: 260 });
+    }
+    async function loadAlerts() {
+        //console.log("loadAlerts RUNNING 🔥");
+        let alerts = [];
+
+        // 🌍 Earthquake
+        const eqRes = await fetch('https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.geojson');
+        const eqData = await eqRes.json();
+
+        //console.log(eqData);
+
+        eqData.features
+            .filter(eq => eq.properties.mag >= 5)
+            .slice(0, 3)
+            .forEach(eq => {
+            alerts.push(`🌍 M${eq.properties.mag} - ${eq.properties.place}`);
+            });
+
+        // 🔥 + 🌊 EONET
+        const eonetRes = await fetch('https://eonet.gsfc.nasa.gov/api/v3/events?status=open');
+        const eonetData = await eonetRes.json();
+
+        eonetData.events.slice(0, 3).forEach(ev => {
+            alerts.push(`⚠️ ${ev.title}`);
+        });
+
+        // ✂️ เอาแค่ 5 ข่าว
+        alerts = alerts.slice(0, 5);
+
+        updateTicker(alerts);
+        //console.log(alerts);
+    }
+  function updateTicker(alerts) {
+    //console.log("UPDATING TICKER", alerts);
+    const ticker = document.getElementById('ticker');
+
+    ticker.innerHTML = `<span>${alerts.join("  •  ")}</span>`;
+   }
+   
+  let lastAlerts = [];
+
+  // ── Global geocoding ─────────────────────────────────────────
+  const GEOCODE_API_KEY = '69fdad57cf850933585115gmlce2259';
+  const geoCache = {};
+
+  async function reverseGeocode(lat, lng) {
+    const key = `${lat.toFixed(2)},${lng.toFixed(2)}`;
+    if (geoCache[key]) return geoCache[key];
+
+    try {
+      const r = await fetch(
+        `https://geocode.maps.co/reverse?lat=${lat}&lon=${lng}&api_key=${GEOCODE_API_KEY}`
+      );
+      if (r.ok) {
+        const d = await r.json();
+        const a = d.address || {};
+        const province = a.county || a.state_district || a.province
+                      || a.state || a.country || null;
+        const country  = a.country || '';
+        if (province) {
+          const result = { province, country };
+          geoCache[key] = result;
+          return result;
+        }
+      }
+    } catch(e) { console.warn('Geocode error:', e); }
+
+    const result = { province: null, country: '' };
+    geoCache[key] = result;
+    return result;
+  }
+  // ─────────────────────────────────────────────────────────────
+
+  function makeFloodPopup(title, locationLine, eventDate, mapsUrl) {
+    return `
+      <div style="line-height:1.6; min-width:210px;">
+        <strong style="font-size:14px; color:#30a0ff;">🌊 ${title}</strong><br>
+        <hr style="margin:4px 0; border-color:rgba(255,255,255,0.1);">
+        📍 ${locationLine}<br>
+        ${eventDate ? `🗓 ${eventDate}<br>` : ''}
+        <a href="${mapsUrl}" target="_blank" style="font-size:12px; color:#30a0ff;">ดูบน Google Maps →</a>
+      </div>`;
+  }
+
+  async function geocodeAndPin(lat, lng, title, eventDate, layer) {
+    const plusCode = OpenLocationCode.encode(lat, lng, 10);
+    const mapsUrl = `https://www.google.com/maps/search/${encodeURIComponent(plusCode)}`;
+    const initLine = `<span style="color:rgba(200,210,255,0.5);font-size:12px;">${lat.toFixed(3)}°, ${lng.toFixed(3)}°</span>`;
+    const m = createMarker(lat, lng, 'fl', makeFloodPopup(title, initLine, eventDate, mapsUrl));
+    m.addTo(layer);
+
+    // geocode background
+    const geo = await reverseGeocode(lat, lng);
+    if (geo.province) {
+      const locLine = `${geo.province}${geo.country && geo.country !== geo.province
+        ? ` <span style="color:rgba(200,210,255,0.5);font-size:11px;">(${geo.country})</span>` : ''}`;
+      m.setPopupContent(makeFloodPopup(title, locLine, eventDate, mapsUrl));
+    }
+  }
+
+  async function loadFloods() {
+    layers.flood.clearLayers();
+    try {
+      const res = await fetch('https://eonet.gsfc.nasa.gov/api/v3/events?category=floods&status=open');
+      const data = await res.json();
+
+      if (data.events && data.events.length > 0) {
+        const jobs = [];
+        for (const flood of data.events) {
+          const g = flood.geometry[0];
+          if (!g) continue;
+          const [lng, lat] = g.coordinates;
+          const eventDate = g.date ? g.date.split('T')[0] : '';
+          jobs.push({ lat, lng, title: flood.title, eventDate });
+        }
+
+        // ปัก marker ทั้งหมดก่อน แล้วค่อย geocode ทีละตัว rate-limited
+        for (const job of jobs) {
+          geocodeAndPin(job.lat, job.lng, job.title, job.eventDate, layers.flood);
+          await new Promise(r => setTimeout(r, 1200));
+        }
+      } else {
+        await loadFloodsFromGDACS();
+      }
+    } catch (err) {
+      console.error("EONET error → fallback GDACS", err);
+      await loadFloodsFromGDACS();
+    }
+  }
+
+  async function loadFloodsFromGDACS() {
+    try {
+      const res = await fetch("result.geojson");
+      const data = await res.json();
+
+      const today = new Date();
+      const daysInCurrentMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+      const endDate = new Date(today.getFullYear(), today.getMonth(), daysInCurrentMonth);
+
+      // const startDate = new Date("2026-06-01");
+      // const endDate = new Date("2026-07-31");
+      const startDate = new Date(endDate);
+      startDate.setDate(endDate.getDate() - 60);
+      console.log(`Filtering GDACS data from: ${startDate.toLocaleDateString('th-TH')} to ${endDate.toLocaleDateString('th-TH')}`);
+
+      const filtered = data.features.filter(f => {
+        const eventTime = new Date(f.properties.datemodified);
+        return (
+          f.properties.eventtype === "FL" &&
+          f.properties.alertlevel === "Orange" &&
+          eventTime >= startDate &&
+          eventTime <= endDate
+        );
+      });
+
+      console.log("FILTERED:", filtered.length);
+
+      for (const f of filtered) {
+        const [lng, lat] = f.geometry.coordinates;
+        if (!isNaN(lat) && !isNaN(lng)) {
+          const props = f.properties;
+          const eventDate = props.datemodified ? props.datemodified.split('T')[0] : '';
+          // GDACS มีชื่อประเทศอยู่แล้ว ไม่ต้อง geocode ซ้ำ
+          const plusCode = OpenLocationCode.encode(lat, lng, 10);
+          const mapsUrl = `https://www.google.com/maps/search/${encodeURIComponent(plusCode)}`;
+          const locLine = `${props.name || ''}${props.country ? `, ${props.country}` : ''}`;
+          const m = createMarker(lat, lng, 'fl', makeFloodPopup(props.name || 'Flood', locLine, eventDate, mapsUrl));
+          m.addTo(layers.flood);
+        }
+      }
+    } catch (err) {
+      console.error("GDACS ERROR:", err);
+    }
+  }
+
+  async function loadData() {
+    document.getElementById('status').innerText = "Updating...";
+
+    layers.earthquake.clearLayers();
+    layers.wildfire.clearLayers();
+    layers.flood.clearLayers();
+
+    // 🌍 Earthquake
+    const eqRes = await fetch('https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.geojson');
+    const eqData = await eqRes.json();
+
+    eqData.features.forEach(eq => {
+      const [lng, lat] = eq.geometry.coordinates;
+      const mag = eq.properties.mag || 0;
+      // scale marker size เหมือนเว็บ USGS: mag 1=8px, mag 5=20px, mag 8+=36px
+      // mag scale: <1=6px, 3=12px, 5=22px, 7=34px, 8+=42px
+      // const size = mag <= 0 ? 6 : Math.round(Math.max(6, Math.min(42, Math.pow(mag, 1.6) * 3.2 + 4)));
+      let size;
+      if (mag <= 1) {
+        size = 6;         // Smallest size for low magnitude
+      } else if (mag >= 1 && mag < 3) {
+        size = 12;        // Medium size
+      } else if (mag >= 3 && mag < 5) {
+        size = 22;        // Large size
+      } else if (mag >= 5 && mag < 7) {
+        size = 36;        // Very Large size
+      } else { // mag >= 7
+        size = 42;        // Largest size for high magnitude
+      }
+
+      const time = eq.properties.time ? new Date(eq.properties.time).toLocaleString('th-TH') : '-';
+      const depth = eq.geometry.coordinates[2]?.toFixed(1) ?? '-';
+      const popup = `
+        <div style="line-height:1.6; min-width:180px;">
+          <strong style="font-size:15px; color:#ff3b30;">🌍 Magnitude ${mag}</strong><br>
+          <hr style="margin:4px 0;">
+          📍 ${eq.properties.place}<br>
+          🕐 ${time}<br>
+          📏 ความลึก: ${depth} km<br>
+          <a href="${eq.properties.url}" target="_blank" style="font-size:12px;">ดูรายละเอียด USGS →</a>
+        </div>`;
+      const m = createMarker(lat, lng, 'eq', popup, size);
+      m.addTo(layers.earthquake);
+    });
+
+    // 🔥 Wildfire
+    const wfRes = await fetch('https://eonet.gsfc.nasa.gov/api/v3/events?category=wildfires&status=all&days=30');
+    const wfData = await wfRes.json();
+
+    // geocode ก่อนปัก marker — ใช้ cache ทำให้ reload ครั้งต่อไปไม่ต้องยิง API ซ้ำ
+    for (const f of wfData.events) {
+      const g = f.geometry[0];
+      if (!g) continue;
+      const [lng, lat] = g.coordinates;
+      const eventDate = g.date ? g.date.split('T')[0] : '';
+      const plusCode = OpenLocationCode.encode(lat, lng, 10);
+      const mapsUrl = `https://www.google.com/maps/search/${encodeURIComponent(plusCode)}`;
+
+      // geocode ก่อน — ถ้ามี cache จะได้ทันที ถ้าไม่มีรอ API
+      const geo = await reverseGeocode(lat, lng);
+      const locationLine = geo.province
+        ? `${geo.province}${geo.country && geo.country !== geo.province
+            ? ` <span style="color:rgba(200,210,255,0.5);font-size:11px;">(${geo.country})</span>`
+            : ''}`
+        : `<span style="color:rgba(200,210,255,0.5);font-size:12px;">${lat.toFixed(3)}°, ${lng.toFixed(3)}°</span>`;
+
+      const popup = `
+        <div style="line-height:1.6; min-width:210px;">
+          <strong style="font-size:14px; color:#ff9500;">🔥 ${f.title}</strong><br>
+          <hr style="margin:4px 0; border-color:rgba(255,255,255,0.1);">
+          📍 ${locationLine}<br>
+          ${eventDate ? `🗓 ${eventDate}<br>` : ''}
+          <a href="${mapsUrl}" target="_blank" style="font-size:12px; color:#ff9500;">ดูบน Google Maps →</a>
+        </div>`;
+
+      const m = createMarker(lat, lng, 'wf', popup);
+      m.addTo(layers.wildfire);
+
+      // rate limit 1.2 วิ/ตัว เฉพาะตอนที่ไม่มี cache
+      if (!geoCache[`${lat.toFixed(2)},${lng.toFixed(2)}`]?.province) {
+        await new Promise(r => setTimeout(r, 1200));
+      }
+    }
+
+    // 🌊 Flood — ✅ FIX: await ให้ถูกต้อง
+    await loadFloods();
+
+    document.getElementById('status').innerText = "Live";
+    document.getElementById('time').innerText = new Date().toLocaleTimeString();
+  }
+
+  // Toggle layer
+  document.getElementById('eqToggle').onchange = e => {
+    e.target.checked ? map.addLayer(layers.earthquake) : map.removeLayer(layers.earthquake);
+  };
+  document.getElementById('wfToggle').onchange = e => {
+    e.target.checked ? map.addLayer(layers.wildfire) : map.removeLayer(layers.wildfire);
+  };
+  document.getElementById('flToggle').onchange = e => {
+    e.target.checked ? map.addLayer(layers.flood) : map.removeLayer(layers.flood);
+  };
+
+  loadData();
+  loadAlerts();
+  setInterval(loadData, 300000);
+      
+</script>
+
+</body>
+</html>
