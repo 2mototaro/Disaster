@@ -488,24 +488,30 @@
 
         //console.log(eqData);
 
-        eqData.features
-            .filter(eq => eq.properties.mag >= 5)
-            .slice(0, 3)
-            .forEach(eq => {
-            alerts.push(`🌍 M${eq.properties.mag} - ${eq.properties.place}`);
-            });
+        if (typeof eqData !== 'undefined' && eqData && eqData.features) {
+            eqData.features
+                .filter(eq => eq.properties.mag >= 5)
+                .slice(0, 3)
+                .forEach(eq => {
+                alerts.push(`🌍 M${eq.properties.mag} - ${eq.properties.place}`);
+                });
+        }
 
-        // 🔥 + 🌊 EONET
-        eonetData.events.slice(0, 3).forEach(ev => {
-            alerts.push(`⚠️ ${ev.title}`);
-        });
+        // 🔥 + 🌊 EONET (เพิ่ม if เช็คว่า eonetData มีข้อมูลจริงไหมก่อนสไลซ์)
+        if (eonetData && eonetData.events && Array.isArray(eonetData.events)) {
+            eonetData.events.slice(0, 3).forEach(ev => {
+                alerts.push(`⚠️ ${ev.title}`);
+            });
+        } else {
+            console.log("⚠️ ไม่สามารถดึงไฮไลท์แจ้งเตือนจาก NASA ได้ชั่วคราว");
+        }
 
         // ✂️ เอาแค่ 5 ข่าว
         alerts = alerts.slice(0, 5);
 
         updateTicker(alerts);
         //console.log(alerts);
-    }
+      }
   function updateTicker(alerts) {
     //console.log("UPDATING TICKER", alerts);
     const ticker = document.getElementById('ticker');
@@ -661,89 +667,228 @@
     throw lastErr;
   }
   // ─────────────────────────────────────────────────────────────
-
   async function loadFloods() {
     layers.flood.clearLayers();
-    try {
-      // ✅ เรียกข้อมูล Flood สดโดยตรงจาก EONET (live API) เป็นแหล่งหลัก
-      const data = await fetchWithTimeoutRetry(
-        'https://eonet.gsfc.nasa.gov/api/v3/events?category=floods&status=open',
-        { timeoutMs: 8000, retries: 2, retryDelayMs: 1200 }
-      );
+    
+    // ฟังก์ชันเสริมสำหรับดึงข้อมูลสำรองจาก NASA EONET (กรณีที่ GDACS ไม่มีข้อมูล)
+    async function fetchFromReliefWeb() {
+      console.log('🌊 GDACS ไม่มีข้อมูล -> สลับมาดึงข้อมูลจาก NASA EONET (Water/Storm Events) แทน...');
+      
+      // ดึงข้อมูลภัยพิบัติประเภทน้ำท่วมและพายุ (Severe Storms / Floods) จาก NASA 
+      const url = "https://eonet.gsfc.nasa.gov/api/v3/events?category=severeStorms&status=open&days=30";
+      const res = await fetch(url);
+      if (!res.ok) throw new Error("NASA EONET Water API Error status: " + res.status);
+      
+      const data = await res.json();
+      let count = 0;
 
-      if (data.events && data.events.length > 0) {
-        const jobs = [];
-        for (const flood of data.events) {
-          const g = flood.geometry[0];
-          if (!g) continue;
+      if (data && data.events && Array.isArray(data.events)) {
+        data.events.forEach(ev => {
+          const g = ev.geometry ? ev.geometry[0] : null;
+          if (!g) return;
+
           const [lng, lat] = g.coordinates;
-          const eventDate = g.date ? g.date.split('T')[0] : '';
-          jobs.push({ lat, lng, title: flood.title, eventDate });
-        }
+          if (!isNaN(lat) && !isNaN(lng)) {
+            const title = ev.title || "Water/Storm Event";
+            const link = ev.sources && ev.sources[0] ? ev.sources[0].url : "#";
+            const eventDate = g.date ? g.date.split('T')[0] : '';
 
-        // ปัก marker ทั้งหมดทันที ไม่มี delay ในลูปนี้เลย — geocode วิ่งผ่านคิวเบื้องหลังแยกต่างหาก
-        for (const job of jobs) {
-          pinFlood(job.lat, job.lng, job.title, job.eventDate, layers.flood);
-        }
-        console.log(`✅ Flood (EONET live): ${jobs.length} เหตุการณ์`);
-      } else {
-        console.log('ℹ️ Flood (EONET live): ไม่มีเหตุการณ์เปิดอยู่ → ใช้ fallback (result.geojson)');
-        await loadFloodsFromGDACS();
+            const popupContent = `
+              <div style="line-height:1.6; min-width:200px; font-family: 'Barlow', sans-serif;">
+                <strong style="font-size:15px; color: var(--fl);">🌊 ${title} (NASA)</strong><br/>
+                <span style="font-size:12px; color:#aaa;">วันที่รายงาน: ${eventDate}</span><br/>
+                <div style="margin-top:6px; display:flex; gap:8px; font-size:11px;">
+                  <a href="${link}" target="_blank" style="color:#30a0ff; text-decoration:underline;">แหล่งข้อมูลจาก NASA →</a>
+                </div>
+              </div>
+            `;
+
+            let m = L.circleMarker([lat, lng], {
+              radius: 8,
+              fillColor: 'var(--fl)',
+              color: '#fff',
+              weight: 1,
+              opacity: 0.8,
+              fillOpacity: 0.6
+            }).bindPopup(popupContent);
+            
+            m.addTo(layers.flood);
+            count++;
+          }
+        });
       }
-    } catch (err) {
-      console.error('❌ EONET Flood error (หมด retry แล้ว) → fallback (result.geojson):', err.message);
-      await loadFloodsFromGDACS();
+      return count;
     }
-  }
 
-  // ⚠️ Fallback เท่านั้น — ใช้เมื่อ EONET live API ล้มเหลวหรือไม่มีข้อมูล
-  // result.geojson เป็นไฟล์สแนปช็อตสำรอง ไม่ใช่แหล่งข้อมูลหลักอีกต่อไป
-  async function loadFloodsFromGDACS() {
+    // --- เริ่มการทำงานหลัก (ลองดึงจาก GDACS ก่อน) ---
     try {
-      const data = await fetchWithTimeoutRetry(
-        "result.geojson?t=" + Date.now(),
-        { timeoutMs: 5000, retries: 1, retryDelayMs: 800, fetchOpts: { cache: 'no-store' } }
-      );
+      console.log('🌊 [1/2] กำลังลองดึงข้อมูล Flood จาก GDACS GeoRSS Feed...');
+      
+      const targetUrl = "https://www.gdacs.org/xml/rss_fl.xml";
+      const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
+      
+      const res = await fetch(proxyUrl);
+      if (!res.ok) throw new Error("GDACS HTTP Error status: " + res.status);
+      
+      const str = await res.text();
+      const parser = new DOMParser();
+      const xmlDoc = parser.parseFromString(str, "text/xml");
+      const items = xmlDoc.getElementsByTagName("item");
 
-      const today = new Date();
-      const daysInCurrentMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
-      const endDate = new Date(today.getFullYear(), today.getMonth(), daysInCurrentMonth);
+      let floodCount = 0;
 
-      // const startDate = new Date("2026-06-01");
-      // const endDate = new Date("2026-07-31");
-      const startDate = new Date(endDate);
-      startDate.setDate(endDate.getDate() - 60);
-      console.log(`🌊 Flood (fallback result.geojson) กรองช่วง: ${startDate.toLocaleDateString('th-TH')} - ${endDate.toLocaleDateString('th-TH')}`);
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        let lat = null, lng = null;
 
-      const filtered = data.features.filter(f => {
-        const eventTime = new Date(f.properties.datemodified);
-        return (
-          f.properties.eventtype === "FL" &&
-          f.properties.alertlevel === "Orange" &&
-          eventTime >= startDate &&
-          eventTime <= endDate
-        );
-      });
+        // แกะพิกัด Namespace ของ GeoRSS จาก GDACS
+        const geoPoint = item.getElementsByTagNameNS("http://www.georss.org/georss", "point")[0]?.textContent;
+        if (geoPoint) {
+          const coords = geoPoint.trim().split(/\s+/);
+          lat = parseFloat(coords[0]);
+          lng = parseFloat(coords[1]);
+        }
 
-      console.log(`✅ Flood (fallback result.geojson): ${filtered.length} เหตุการณ์ (จากทั้งหมด ${data.features.length})`);
+        if (lat !== null && lng !== null && !isNaN(lat) && !isNaN(lng)) {
+          const title = item.getElementsByTagName("title")[0]?.textContent || "GDACS Flood Event";
+          const description = item.getElementsByTagName("description")[0]?.textContent || "";
+          const link = item.getElementsByTagName("link")[0]?.textContent || "#";
+          const pubDate = item.getElementsByTagName("pubDate")[0]?.textContent || "";
+          
+          const popupContent = `
+            <div style="line-height:1.6; min-width:180px; font-family: 'Barlow', sans-serif;">
+              <strong style="font-size:15px; color: var(--fl);">🌊 ${title} (GDACS)</strong><br/>
+              <span style="font-size:12px; color:#aaa;">วันที่รายงาน: ${pubDate}</span><br/>
+              <p style="margin:6px 0; font-size:12px; max-height:80px; overflow-y:auto; color:#b0c4de;">${description}</p>
+              <div style="margin-top:6px; display:flex; gap:8px; font-size:11px;">
+                <a href="${link}" target="_blank" style="color:#30a0ff; text-decoration:underline;">รายละเอียด (GDACS)</a>
+              </div>
+            </div>
+          `;
 
-      for (const f of filtered) {
-        const [lng, lat] = f.geometry.coordinates;
-        if (!isNaN(lat) && !isNaN(lng)) {
-          const props = f.properties;
-          const eventDate = props.datemodified ? props.datemodified.split('T')[0] : '';
-          // GDACS มีชื่อประเทศอยู่แล้ว ไม่ต้อง geocode ซ้ำ
-          const plusCode = OpenLocationCode.encode(lat, lng, 10);
-          const mapsUrl = `https://www.google.com/maps/search/${encodeURIComponent(plusCode)}`;
-          const locLine = `${props.name || ''}${props.country ? `, ${props.country}` : ''}`;
-          const m = createMarker(lat, lng, 'fl', makeFloodPopup(props.name || 'Flood', locLine, eventDate, mapsUrl));
+          let m = L.circleMarker([lat, lng], {
+            radius: 8,
+            fillColor: 'var(--fl)',
+            color: '#fff',
+            weight: 1,
+            opacity: 0.8,
+            fillOpacity: 0.6
+          }).bindPopup(popupContent);
+          
           m.addTo(layers.flood);
+          floodCount++;
         }
       }
+
+      // ตรวจสอบผลลัพธ์ของ GDACS
+      if (floodCount > 0) {
+        console.log(`✅ โหลดข้อมูลน้ำท่วมจาก GDACS สำเร็จทั้งหมด: ${floodCount} จุด`);
+        const floodBadge = document.getElementById('flCount');
+        if (floodBadge) floodBadge.innerText = floodCount;
+      } else {
+        // เงื่อนไขสำคัญ: ถ้า GDACS สำเร็จแต่ได้ 0 จุด ให้ไปดึง ReliefWeb มาเติมเต็ม
+        console.log(`ℹ️ GDACS ดึงได้ 0 จุด (ไม่มีภัยพิบัติใหม่บนระบบ)`);
+        const rwCount = await fetchFromReliefWeb();
+        console.log(`✅ สลับมาดึงข้อมูล NASA EONET สำเร็จ: ${rwCount} จุด`);
+        const floodBadge = document.getElementById('flCount');
+        if (floodBadge) floodBadge.innerText = rwCount;
+      }
+
     } catch (err) {
-      console.error("GDACS ERROR:", err);
+      console.error('❌ ดึงข้อมูล GDACS ล้มเหลว (CORS/Network) -> ข้ามไปใช้ ReliefWeb สำรอง:', err);
+      // กรณี GDACS ล่มกลางทาง (เช่นเน็ตพังหรือพร็อกซี่มีปัญหา) ก็ให้วิ่งไปหา ReliefWeb ทันที
+      try {
+        const rwCount = await fetchFromReliefWeb();
+        console.log(`✅ [Fallback] โหลดข้อมูลน้ำท่วมจาก ReliefWeb สำเร็จ: ${rwCount} จุด`);
+        const floodBadge = document.getElementById('flCount');
+        if (floodBadge) floodBadge.innerText = rwCount;
+      } catch (rwErr) {
+        console.error('❌ พังหมดทั้งสองระบบ (GDACS & ReliefWeb):', rwErr);
+      }
     }
   }
+  // async function loadFloods() {
+  //   layers.flood.clearLayers();
+  //   try {
+  //     // ✅ เรียกข้อมูล Flood สดโดยตรงจาก EONET (live API) เป็นแหล่งหลัก
+  //     const data = await fetchWithTimeoutRetry(
+  //       'https://eonet.gsfc.nasa.gov/api/v3/events?category=floods&status=open',
+  //       { timeoutMs: 8000, retries: 2, retryDelayMs: 1200 }
+  //     );
+
+  //     if (data.events && data.events.length > 0) {
+  //       const jobs = [];
+  //       for (const flood of data.events) {
+  //         const g = flood.geometry[0];
+  //         if (!g) continue;
+  //         const [lng, lat] = g.coordinates;
+  //         const eventDate = g.date ? g.date.split('T')[0] : '';
+  //         jobs.push({ lat, lng, title: flood.title, eventDate });
+  //       }
+
+  //       // ปัก marker ทั้งหมดทันที ไม่มี delay ในลูปนี้เลย — geocode วิ่งผ่านคิวเบื้องหลังแยกต่างหาก
+  //       for (const job of jobs) {
+  //         pinFlood(job.lat, job.lng, job.title, job.eventDate, layers.flood);
+  //       }
+  //       console.log(`✅ Flood (EONET live): ${jobs.length} เหตุการณ์`);
+  //     } else {
+  //       console.log('ℹ️ Flood (EONET live): ไม่มีเหตุการณ์เปิดอยู่ → ใช้ fallback (result.geojson)');
+  //       await loadFloodsFromGDACS();
+  //     }
+  //   } catch (err) {
+  //     console.error('❌ EONET Flood error (หมด retry แล้ว) → fallback (result.geojson):', err.message);
+  //     await loadFloodsFromGDACS();
+  //   }
+  // }
+
+  // // ⚠️ Fallback เท่านั้น — ใช้เมื่อ EONET live API ล้มเหลวหรือไม่มีข้อมูล
+  // // result.geojson เป็นไฟล์สแนปช็อตสำรอง ไม่ใช่แหล่งข้อมูลหลักอีกต่อไป
+  // async function loadFloodsFromGDACS() {
+  //   try {
+  //     const data = await fetchWithTimeoutRetry(
+  //       "result.geojson?t=" + Date.now(),
+  //       { timeoutMs: 5000, retries: 1, retryDelayMs: 800, fetchOpts: { cache: 'no-store' } }
+  //     );
+
+  //     const today = new Date();
+  //     const daysInCurrentMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+  //     const endDate = new Date(today.getFullYear(), today.getMonth(), daysInCurrentMonth);
+
+  //     // const startDate = new Date("2026-06-01");
+  //     // const endDate = new Date("2026-07-31");
+  //     const startDate = new Date(endDate);
+  //     startDate.setDate(endDate.getDate() - 60);
+  //     console.log(`🌊 Flood (fallback result.geojson) กรองช่วง: ${startDate.toLocaleDateString('th-TH')} - ${endDate.toLocaleDateString('th-TH')}`);
+
+  //     const filtered = data.features.filter(f => {
+  //       const eventTime = new Date(f.properties.datemodified);
+  //       return (
+  //         f.properties.eventtype === "FL" &&
+  //         f.properties.alertlevel === "Orange" &&
+  //         eventTime >= startDate &&
+  //         eventTime <= endDate
+  //       );
+  //     });
+
+  //     console.log(`✅ Flood (fallback result.geojson): ${filtered.length} เหตุการณ์ (จากทั้งหมด ${data.features.length})`);
+
+  //     for (const f of filtered) {
+  //       const [lng, lat] = f.geometry.coordinates;
+  //       if (!isNaN(lat) && !isNaN(lng)) {
+  //         const props = f.properties;
+  //         const eventDate = props.datemodified ? props.datemodified.split('T')[0] : '';
+  //         // GDACS มีชื่อประเทศอยู่แล้ว ไม่ต้อง geocode ซ้ำ
+  //         const plusCode = OpenLocationCode.encode(lat, lng, 10);
+  //         const mapsUrl = `https://www.google.com/maps/search/${encodeURIComponent(plusCode)}`;
+  //         const locLine = `${props.name || ''}${props.country ? `, ${props.country}` : ''}`;
+  //         const m = createMarker(lat, lng, 'fl', makeFloodPopup(props.name || 'Flood', locLine, eventDate, mapsUrl));
+  //         m.addTo(layers.flood);
+  //       }
+  //     }
+  //   } catch (err) {
+  //     console.error("GDACS ERROR:", err);
+  //   }
+  // }
 
   async function loadData(eqDataPromise) {
     document.getElementById('status').innerText = "Updating...";
@@ -798,31 +943,34 @@
     const wfData = await wfPromise;
 
     // ปัก marker ทันทีด้วยพิกัดก่อน แล้วค่อย geocode หาชื่อจังหวัด/ประเทศแบบ background
-    // (ไม่ await ทำให้ marker ทุกจุดขึ้นพร้อมกันทันที ไม่ต้องรอทีละจุด)
-    for (const f of wfData.events) {
-      const g = f.geometry[0];
-      if (!g) continue;
-      const [lng, lat] = g.coordinates;
-      const eventDate = g.date ? g.date.split('T')[0] : '';
-      const plusCode = OpenLocationCode.encode(lat, lng, 10);
-      const mapsUrl = `https://www.google.com/maps/search/${encodeURIComponent(plusCode)}`;
-      const key = `${lat.toFixed(2)},${lng.toFixed(2)}`;
+    if (wfData && wfData.events && Array.isArray(wfData.events)) {
+        for (const f of wfData.events) {
+          const g = f.geometry[0];
+          if (!g) continue;
+          const [lng, lat] = g.coordinates;
+          const eventDate = g.date ? g.date.split('T')[0] : '';
+          const plusCode = OpenLocationCode.encode(lat, lng, 10);
+          const mapsUrl = `https://www.google.com/maps/search/${encodeURIComponent(plusCode)}`;
+          const key = `${lat.toFixed(2)},${lng.toFixed(2)}`;
 
-      // ถ้ามี cache อยู่แล้วใช้ได้ทันที ไม่มีก็ขึ้นพิกัดไปก่อนแล้วอัปเดตทีหลัง
-      const cached = geoCache[key];
-      const locationLine = cached?.province
-        ? `${cached.province}${cached.country && cached.country !== cached.province
-            ? ` <span style="color:rgba(200,210,255,0.5);font-size:11px;">(${cached.country})</span>`
-            : ''}`
-        : `<span style="color:rgba(200,210,255,0.5);font-size:12px;">${lat.toFixed(3)}°, ${lng.toFixed(3)}°</span>`;
+          // ถ้ามี cache อยู่แล้วใช้ได้ทันที ไม่มีก็ขึ้นพิกัดไปก่อนแล้วอัปเดตทีหลัง
+          const cached = geoCache[key];
+          const locationLine = cached?.province
+            ? `${cached.province}${cached.country && cached.country !== cached.province
+                ? ` <span style="color:rgba(200,210,255,0.5);font-size:11px;">(${cached.country})</span>`
+                : ''}`
+            : `<span style="color:rgba(200,210,255,0.5);font-size:12px;">${lat.toFixed(3)}°, ${lng.toFixed(3)}°</span>`;
 
-      const m = createMarker(lat, lng, 'wf', makeWildfirePopup(f.title, locationLine, eventDate, mapsUrl));
-      m.addTo(layers.wildfire);
+          const m = createMarker(lat, lng, 'wf', makeWildfirePopup(f.title, locationLine, eventDate, mapsUrl));
+          m.addTo(layers.wildfire);
 
-      // geocode แบบไม่บล็อกลูปเลย — เข้าคิวเบื้องหลังแยกต่างหาก
-      if (!cached) {
-        queueGeocode(updateWildfirePopup(m, lat, lng, f.title, eventDate, mapsUrl));
-      }
+          // geocode แบบไม่บล็อกลูปเลย — เข้าคิวเบื้องหลังแยกต่างหาก
+          if (!cached) {
+            queueGeocode(updateWildfirePopup(m, lat, lng, f.title, eventDate, mapsUrl));
+          }
+        }
+    } else {
+        console.log("⚠️ ไม่สามารถโหลดข้อมูลไฟป่าได้เนื่องจากเซิร์ฟเวอร์ NASA มีปัญหา");
     }
 
     // 🌊 Flood — request ยิงไปพร้อมกับอันอื่นตั้งแต่ต้นฟังก์ชันแล้ว ไม่ await ตรงนี้
@@ -854,7 +1002,7 @@
   loadData(initialEqPromise);
   loadAlerts(initialEqPromise);
   setInterval(() => { loadData(); loadAlerts(); }, 300000);
-      
+  
 </script>
 
 </body>
