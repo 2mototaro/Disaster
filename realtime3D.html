@@ -1,0 +1,1659 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Global Disaster Monitor</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <link href="https://unpkg.com/maplibre-gl@^5.0.0/dist/maplibre-gl.css" rel="stylesheet" />
+  <script src="https://unpkg.com/maplibre-gl@^5.0.0/dist/maplibre-gl.js"></script>
+
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --eq: #ff2d55; --wf: #ff9500; --fl: #30a0ff; --st: #b06bff;
+      --bg: rgba(10, 16, 30, 0.9);
+      --border: rgba(255,255,255,0.1);
+      --dim: rgba(200,214,245,0.6);
+      --dim2: rgba(200,214,245,0.42);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; font-family: 'Barlow', sans-serif;
+      background: #1d3049; color: #e6eeff; overflow: hidden;
+    }
+    #map { height: 100vh; width: 100%; }
+
+    .ui-overlay { z-index: 1000; position: absolute; }
+    .card {
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: 14px; backdrop-filter: blur(16px);
+      box-shadow: 0 10px 38px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.07);
+    }
+    h2.sec {
+      margin: 0 0 12px; font-size: 11px;
+      font-family: 'Share Tech Mono', monospace;
+      letter-spacing: 2px; text-transform: uppercase; color: var(--dim);
+    }
+    hr.sep { border: none; border-top: 1px solid var(--border); margin: 14px 0 12px; }
+
+    /* ===== CONTROL PANEL ===== */
+    .panel { top: 46px; left: 16px; width: 252px; padding: 16px; max-height: calc(100vh - 130px); overflow-y: auto; }
+    .panel::-webkit-scrollbar { width: 5px; }
+    .panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,.14); border-radius: 3px; }
+
+    .toggle {
+      display: flex; align-items: center; margin: 8px 0;
+      cursor: pointer; gap: 10px; font-size: 13.5px; font-weight: 600;
+    }
+    .toggle input { display: none; }
+    .toggle .dot {
+      width: 34px; height: 19px; background: rgba(255,255,255,0.12);
+      border-radius: 10px; position: relative; transition: background .25s;
+      flex-shrink: 0; border: 1px solid rgba(255,255,255,0.16);
+    }
+    .toggle .dot::after {
+      content: ''; position: absolute; width: 13px; height: 13px;
+      border-radius: 50%; top: 2px; left: 2px; background: #fff; transition: transform .25s;
+    }
+    .toggle input:checked + .dot { background: var(--accent); }
+    .toggle input:checked + .dot::after { transform: translateX(15px); }
+    .toggle-eq .dot { --accent: var(--eq); }
+    .toggle-wf .dot { --accent: var(--wf); }
+    .toggle-fl .dot { --accent: var(--fl); }
+    .toggle-st .dot { --accent: var(--st); }
+    .toggle-x  .dot { --accent: #2fe6a0; }
+    .toggle-bc .dot { --accent: #ff3860; }
+
+    .toggle-label { display: flex; align-items: center; gap: 7px; flex: 1; }
+    .kbd {
+      font-family: 'Share Tech Mono', monospace; font-size: 9.5px;
+      border: 1px solid var(--border); border-radius: 4px;
+      padding: 0 4px; color: var(--dim2);
+    }
+    .badge9 { width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+    .count {
+      font-family: 'Share Tech Mono', monospace; font-size: 11.5px; color: var(--dim);
+      background: rgba(255,255,255,0.06); padding: 1px 7px;
+      border-radius: 6px; min-width: 36px; text-align: center;
+    }
+
+    .filter-head {
+      display: flex; justify-content: space-between; align-items: baseline;
+      font-size: 10.5px; font-family: 'Share Tech Mono', monospace;
+      color: var(--dim); letter-spacing: 1px; margin-bottom: 8px;
+    }
+    .filter-head b { color: var(--eq); font-size: 13px; }
+    input[type=range] {
+      -webkit-appearance: none; width: 100%; height: 4px;
+      border-radius: 2px; background: rgba(255,255,255,0.14); outline: none;
+    }
+    input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%;
+      background: var(--eq); cursor: pointer;
+      box-shadow: 0 0 9px rgba(255,45,85,.75); border: 2px solid #0d1220;
+    }
+    input[type=range]::-moz-range-thumb {
+      width: 12px; height: 12px; border-radius: 50%;
+      background: var(--eq); cursor: pointer; border: 2px solid #0d1220;
+    }
+    input[type=range].spd::-webkit-slider-thumb { background: #2fe6a0; box-shadow: 0 0 9px rgba(47,230,160,.7); }
+    input[type=range].spd::-moz-range-thumb { background: #2fe6a0; }
+
+    .sel {
+      width: 100%; background: rgba(255,255,255,0.07);
+      border: 1px solid var(--border); border-radius: 9px;
+      color: #e6eeff; font-size: 12.5px; padding: 7px 9px;
+      outline: none; cursor: pointer; font-family: 'Barlow', sans-serif;
+    }
+    .sel option { background: #101a2c; }
+
+    /* ===== EVENT FEED ===== */
+    .feed {
+      top: 46px; right: 16px; width: 320px;
+      max-height: calc(100vh - 130px);
+      display: flex; flex-direction: column; overflow: hidden;
+    }
+    .feed-head { padding: 14px 15px 11px; border-bottom: 1px solid var(--border); }
+    .feed-head .row {
+      display: flex; justify-content: space-between; align-items: center;
+      font-family: 'Share Tech Mono', monospace; font-size: 10.5px;
+      color: var(--dim); letter-spacing: 1px;
+    }
+    .feed-head .row + .row { margin-top: 5px; }
+    .feed-head .hl { color: #e6eeff; }
+
+    .feed-tabs { display: flex; gap: 5px; margin-top: 11px; }
+    .tab {
+      flex: 1; text-align: center; cursor: pointer; user-select: none;
+      padding: 6px 2px 5px; border-radius: 8px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid transparent;
+      transition: background .15s, border-color .15s;
+    }
+    .tab:hover { background: rgba(255,255,255,0.09); }
+    .tab.on { background: rgba(255,255,255,0.11); border-color: var(--tc); }
+    .tab .ic { font-size: 12px; line-height: 1; }
+    .tab .n {
+      display: block; font-family: 'Share Tech Mono', monospace;
+      font-size: 10.5px; margin-top: 3px; color: var(--dim2);
+    }
+    .tab.on .n { color: var(--tc); font-weight: 700; }
+
+    .feed-tools { display: flex; gap: 7px; margin-top: 9px; }
+    .feed-search {
+      flex: 1; background: rgba(255,255,255,0.07); border: 1px solid var(--border);
+      border-radius: 8px; padding: 6px 10px; color: #e6eeff;
+      font-family: 'Barlow', sans-serif; font-size: 12.5px; outline: none; min-width: 0;
+    }
+    .feed-search::placeholder { color: var(--dim2); }
+    .feed-search:focus { border-color: rgba(255,255,255,0.26); }
+    .feed-sort {
+      background: rgba(255,255,255,0.07); border: 1px solid var(--border);
+      border-radius: 8px; color: var(--dim); font-size: 11.5px;
+      padding: 6px; outline: none; cursor: pointer; font-family: 'Barlow', sans-serif;
+    }
+    .feed-sort option { background: #101a2c; }
+
+    .feed-list { overflow-y: auto; padding: 6px; flex: 1; }
+    .feed-list::-webkit-scrollbar { width: 6px; }
+    .feed-list::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.14); border-radius: 3px; }
+    .feed-item {
+      display: flex; align-items: stretch; gap: 10px; padding: 9px 10px;
+      border-radius: 9px; cursor: pointer; transition: background .15s;
+      border: 1px solid transparent;
+    }
+    .feed-item:hover { background: rgba(255,255,255,0.07); border-color: var(--border); }
+    .feed-item.active { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.2); }
+    .feed-bar { width: 3px; border-radius: 2px; flex-shrink: 0; }
+    .feed-body { flex: 1; min-width: 0; }
+    .feed-title {
+      font-size: 12.8px; font-weight: 600; line-height: 1.35;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .feed-meta {
+      font-size: 10.5px; color: var(--dim2); font-family: 'Share Tech Mono', monospace;
+      margin-top: 3px; display: flex; gap: 6px; align-items: center;
+    }
+    .feed-tag { padding: 0 5px; border-radius: 4px; font-size: 9.5px; border: 1px solid currentColor; opacity: .88; }
+    .feed-val { font-family: 'Share Tech Mono', monospace; font-size: 13px; font-weight: 700; align-self: center; flex-shrink: 0; }
+    .feed-empty { padding: 26px 14px; text-align: center; color: var(--dim2); font-size: 12.5px; }
+
+    /* ===== LEGEND ===== */
+    .legend { bottom: 18px; left: 16px; padding: 13px 16px; width: 252px; font-size: 12px; }
+    .lg-row { display: flex; align-items: center; gap: 9px; margin: 6px 0; }
+    .lg-src { font-family: 'Share Tech Mono', monospace; font-size: 9.5px; color: var(--dim2); margin-left: auto; }
+    .lg-block { margin-top: 11px; padding-top: 10px; border-top: 1px solid var(--border); }
+    .lg-ramp { display: flex; height: 9px; border-radius: 3px; overflow: hidden; }
+    .lg-ramp i { flex: 1; }
+    .lg-ticks {
+      display: flex; justify-content: space-between; margin-top: 4px;
+      font-family: 'Share Tech Mono', monospace; font-size: 9px; color: var(--dim2);
+    }
+    .lg-scale { display: flex; align-items: flex-end; gap: 9px; margin-top: 10px; }
+    .lg-scale div { text-align: center; }
+    .lg-scale span { display: block; font-size: 9px; color: var(--dim2); margin-top: 3px; font-family: 'Share Tech Mono', monospace; }
+    .lg-dot { border-radius: 50%; display: inline-block; border: 1px solid rgba(255,255,255,.55); }
+    .lg-note { font-size: 10px; color: var(--dim2); margin-top: 7px; line-height: 1.5; }
+
+    /* ===== STATUS ===== */
+    .status {
+      bottom: 18px; right: 16px; padding: 8px 14px; font-size: 11.5px;
+      font-family: 'Share Tech Mono', monospace;
+      display: flex; align-items: center; gap: 8px; border-radius: 10px;
+    }
+    #status { color: #2fe6a0; font-weight: bold; }
+    .live-dot {
+      width: 7px; height: 7px; border-radius: 50%; background: #2fe6a0;
+      box-shadow: 0 0 9px #2fe6a0; animation: blink 2s ease-in-out infinite;
+    }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.25} }
+
+    /* ===== TICKER ===== */
+    .breaking {
+      top: 0; width: 100%; background: linear-gradient(90deg,#8b0000,#d10000);
+      color: #fff; display: flex; align-items: center; font-weight: 700;
+      font-size: 13px; z-index: 2000; border-bottom: 1px solid rgba(255,110,110,.45);
+      transition: font-size .3s;
+    }
+    .breaking .label {
+      padding: 7px 14px; background: rgba(0,0,0,.36);
+      font-family: 'Share Tech Mono', monospace; font-size: 11px;
+      letter-spacing: 2px; white-space: nowrap; border-right: 1px solid rgba(255,110,110,.3);
+      transition: font-size .3s, padding .3s;
+    }
+    .ticker { white-space: nowrap; overflow: hidden; flex: 1; }
+    .ticker span { display: inline-block; padding: 7px 0 7px 100%; animation: tick 30s linear infinite; }
+    .ticker:hover span { animation-play-state: paused; }
+    @keyframes tick { 0%{transform:translateX(0)} 100%{transform:translateX(-100%)} }
+
+    /* ===== PULSE ===== */
+    @keyframes pulse-ring { 0%{transform:scale(.5);opacity:.9} 100%{transform:scale(2.8);opacity:0} }
+    .pulse-marker { pointer-events: none; width: 0; height: 0; position: relative; }
+    .pulse-ring {
+      position: absolute; border-radius: 50%;
+      border: 2px solid currentColor;
+      animation: pulse-ring 2.6s cubic-bezier(.2,.6,.3,1) infinite;
+    }
+    .pulse-ring:nth-child(2) { animation-delay: 1.3s; }
+
+    /* ===== POPUP ===== */
+    .maplibregl-popup-content {
+      background: rgba(12,20,36,.97) !important; color: #e2ecff !important;
+      border: 1px solid rgba(255,255,255,.14) !important; border-radius: 12px !important;
+      box-shadow: 0 10px 38px rgba(0,0,0,.7) !important;
+      font-family: 'Barlow', sans-serif !important; padding: 13px 15px !important;
+    }
+    .maplibregl-popup-anchor-bottom .maplibregl-popup-tip { border-top-color: rgba(12,20,36,.97) !important; }
+    .maplibregl-popup-anchor-top .maplibregl-popup-tip { border-bottom-color: rgba(12,20,36,.97) !important; }
+    .maplibregl-popup-anchor-left .maplibregl-popup-tip { border-right-color: rgba(12,20,36,.97) !important; }
+    .maplibregl-popup-anchor-right .maplibregl-popup-tip { border-left-color: rgba(12,20,36,.97) !important; }
+    .maplibregl-popup-close-button { color: rgba(255,255,255,.5) !important; font-size: 17px !important; padding: 3px 8px !important; }
+    .pop-title { font-size: 14px; font-weight: 700; margin-bottom: 6px; }
+    .pop-row { font-size: 12.5px; line-height: 1.75; color: rgba(226,236,255,.86); }
+    .pop-sep { border: none; border-top: 1px solid rgba(255,255,255,.11); margin: 7px 0; }
+    .pop-link { font-size: 11.5px; text-decoration: none; font-weight: 600; }
+    .pop-meta { font-family: 'Share Tech Mono', monospace; font-size: 11px; color: var(--dim2); }
+    .pop-chip {
+      display: inline-block; padding: 1px 8px; border-radius: 6px; font-size: 11px;
+      font-weight: 700; font-family: 'Share Tech Mono', monospace; border: 1px solid currentColor;
+    }
+
+    .maplibregl-ctrl-group { background: var(--bg) !important; border: 1px solid var(--border) !important; }
+    .maplibregl-ctrl-group button { filter: invert(.9); }
+    .maplibregl-ctrl-attrib { background: rgba(10,16,30,.72) !important; }
+    .maplibregl-ctrl-attrib a { color: rgba(200,214,245,.62) !important; }
+    .maplibregl-ctrl-bottom-right { margin-bottom: 54px; }
+
+    /* ══════════════════════════════════════════
+       BROADCAST MODE
+       ══════════════════════════════════════════ */
+    .bc-only { display: none !important; }
+
+    body.broadcast .panel,
+    body.broadcast .feed,
+    body.broadcast .legend,
+    body.broadcast .status,
+    body.broadcast .maplibregl-ctrl-top-right,
+    body.broadcast .maplibregl-ctrl-bottom-right,
+    body.broadcast .maplibregl-popup { display: none !important; }
+
+    body.broadcast .bc-only { display: flex !important; }
+    body.broadcast .breaking { font-size: 16px; }
+    body.broadcast .breaking .label { font-size: 13px; padding: 10px 18px; }
+    body.broadcast .ticker span { padding-top: 10px; padding-bottom: 10px; }
+    body.broadcast.idle { cursor: none; }
+    body.broadcast.idle .bc-exit { opacity: 0; pointer-events: none; }
+
+    /* ขอบมืดรอบเฟรมแบบงานออกอากาศ */
+    .bc-vignette {
+      position: absolute; inset: 0; z-index: 900; pointer-events: none;
+      background: radial-gradient(ellipse at center, rgba(0,0,0,0) 45%, rgba(0,0,0,0.55) 100%);
+    }
+
+    /* แถบสถิติมุมขวาบน */
+    .bc-stats {
+      top: 58px; right: 22px; gap: 8px; flex-direction: column; align-items: flex-end;
+    }
+    .bc-stat {
+      display: flex; align-items: center; gap: 9px;
+      background: rgba(8,14,26,0.72); backdrop-filter: blur(12px);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-left: 3px solid var(--c);
+      border-radius: 8px; padding: 6px 13px 6px 11px; min-width: 168px;
+    }
+    .bc-stat .lbl {
+      font-family: 'Share Tech Mono', monospace; font-size: 10.5px;
+      letter-spacing: 1.5px; color: rgba(220,232,255,0.72); flex: 1;
+    }
+    .bc-stat .val {
+      font-family: 'Share Tech Mono', monospace; font-size: 17px;
+      font-weight: 700; color: var(--c); line-height: 1;
+    }
+
+    /* Lower third */
+    .bc-lower {
+      bottom: 30px; left: 30px; max-width: 62vw;
+      align-items: stretch; gap: 0;
+      animation: bcIn .55s cubic-bezier(.2,.8,.3,1);
+    }
+    @keyframes bcIn { from { opacity: 0; transform: translateX(-26px); } to { opacity: 1; transform: none; } }
+    .bc-accent { width: 7px; border-radius: 4px 0 0 4px; background: var(--c); box-shadow: 0 0 22px var(--c); }
+    .bc-body {
+      background: rgba(8,14,26,0.86); backdrop-filter: blur(16px);
+      border: 1px solid rgba(255,255,255,0.11); border-left: none;
+      border-radius: 0 12px 12px 0; padding: 12px 22px 13px 18px;
+    }
+    .bc-kicker {
+      font-family: 'Share Tech Mono', monospace; font-size: 11px;
+      letter-spacing: 2.4px; color: var(--c); text-transform: uppercase;
+      display: flex; align-items: center; gap: 9px;
+    }
+    .bc-kicker .sub { color: rgba(200,214,245,0.5); letter-spacing: 1.2px; }
+    .bc-title {
+      font-size: 26px; font-weight: 800; line-height: 1.2; margin-top: 5px;
+      letter-spacing: -0.2px; text-shadow: 0 2px 14px rgba(0,0,0,.6);
+    }
+    .bc-sub {
+      font-size: 13.5px; color: rgba(214,228,255,0.72); margin-top: 5px;
+      font-family: 'Share Tech Mono', monospace;
+    }
+
+    /* นาฬิกา */
+    .bc-clock {
+      bottom: 30px; right: 30px; flex-direction: column; align-items: flex-end;
+      background: rgba(8,14,26,0.78); backdrop-filter: blur(14px);
+      border: 1px solid rgba(255,255,255,0.11); border-radius: 12px;
+      padding: 10px 18px; font-family: 'Share Tech Mono', monospace;
+    }
+    .bc-clock .t { font-size: 25px; font-weight: 700; line-height: 1; letter-spacing: 1px; }
+    .bc-clock .z { font-size: 10.5px; color: rgba(200,214,245,0.55); margin-top: 5px; letter-spacing: 1.6px; }
+
+    /* ปุ่มออก */
+    .bc-exit {
+      top: 52px; left: 22px; align-items: center; gap: 8px; cursor: pointer;
+      background: rgba(8,14,26,0.8); backdrop-filter: blur(12px);
+      border: 1px solid rgba(255,255,255,0.14); border-radius: 9px;
+      padding: 7px 14px; font-size: 12px; font-weight: 600;
+      transition: opacity .35s, background .15s; z-index: 1500;
+    }
+    .bc-exit:hover { background: rgba(30,44,70,0.9); }
+
+    @media (max-width: 1100px) { .feed { display: none; } }
+  </style>
+</head>
+
+<body>
+
+<div id="map"></div>
+
+<div class="bc-vignette bc-only ui-overlay"></div>
+
+<!-- ══ CONTROL PANEL ══ -->
+<div class="panel card ui-overlay">
+  <h2 class="sec">⬡ Disaster Layers</h2>
+
+  <label class="toggle toggle-eq">
+    <input type="checkbox" checked id="eqToggle"><span class="dot"></span>
+    <span class="toggle-label"><span class="badge9" style="background:var(--eq);box-shadow:0 0 7px var(--eq);"></span>Earthquake</span>
+    <span class="count" id="eqCount">—</span>
+  </label>
+
+  <label class="toggle toggle-st">
+    <input type="checkbox" checked id="stToggle"><span class="dot"></span>
+    <span class="toggle-label"><span class="badge9" style="background:var(--st);box-shadow:0 0 7px var(--st);"></span>Severe Storm</span>
+    <span class="count" id="stCount">—</span>
+  </label>
+
+  <label class="toggle toggle-wf">
+    <input type="checkbox" checked id="wfToggle"><span class="dot"></span>
+    <span class="toggle-label"><span class="badge9" style="background:var(--wf);box-shadow:0 0 7px var(--wf);"></span>Wildfire</span>
+    <span class="count" id="wfCount">—</span>
+  </label>
+
+  <label class="toggle toggle-fl">
+    <input type="checkbox" checked id="flToggle"><span class="dot"></span>
+    <span class="toggle-label"><span class="badge9" style="background:var(--fl);box-shadow:0 0 7px var(--fl);"></span>Flood</span>
+    <span class="count" id="flCount">—</span>
+  </label>
+
+  <hr class="sep">
+  <div class="filter-head"><span>MIN MAGNITUDE</span><b id="magValue">M 0.0</b></div>
+  <input type="range" id="magFilter" min="0" max="7" step="0.5" value="0">
+
+  <hr class="sep">
+  <h2 class="sec">🗺 Basemap</h2>
+  <select class="sel" id="themeSel">
+    <option value="news">Newsroom — สว่าง อ่านง่าย</option>
+    <option value="midnight">Midnight — เข้ม เน้นข้อมูล</option>
+    <option value="graphite">Graphite — เทากลาง</option>
+    <option value="satellite">Satellite — ภาพถ่ายดาวเทียม</option>
+  </select>
+
+  <hr class="sep">
+  <label class="toggle toggle-x">
+    <input type="checkbox" checked id="globeToggle"><span class="dot"></span>
+    <span class="toggle-label">🌐 Globe View</span>
+  </label>
+  <label class="toggle toggle-x">
+    <input type="checkbox" checked id="heatToggle"><span class="dot"></span>
+    <span class="toggle-label">🔥 Wildfire Heatmap</span>
+  </label>
+  <label class="toggle toggle-x">
+    <input type="checkbox" checked id="trackToggle"><span class="dot"></span>
+    <span class="toggle-label">🌀 Storm Tracks</span>
+  </label>
+  <label class="toggle toggle-x">
+    <input type="checkbox" checked id="labelToggle"><span class="dot"></span>
+    <span class="toggle-label">🏷 ชื่อสถานที่</span>
+  </label>
+  <label class="toggle toggle-x">
+    <input type="checkbox" id="spinToggle"><span class="dot"></span>
+    <span class="toggle-label">🔄 หมุนลูกโลกอัตโนมัติ</span>
+  </label>
+
+  <div class="filter-head" style="margin-top:10px;"><span>SPIN SPEED</span><b id="spdValue" style="color:#2fe6a0;">120s/รอบ</b></div>
+  <input type="range" class="spd" id="spinSpeed" min="40" max="300" step="10" value="120">
+
+  <hr class="sep">
+  <label class="toggle toggle-bc">
+    <input type="checkbox" id="bcToggle"><span class="dot"></span>
+    <span class="toggle-label">📺 Broadcast Mode <span class="kbd">B</span></span>
+  </label>
+</div>
+
+<!-- ══ EVENT FEED ══ -->
+<div class="feed card ui-overlay">
+  <div class="feed-head">
+    <div class="row"><span>◈ LIVE EVENT FEED</span><span class="hl" id="feedCount">0</span></div>
+    <div class="row"><span>UPDATED</span><span class="hl" id="time">—</span></div>
+    <div class="row"><span>NEXT SYNC</span><span class="hl" id="next">—</span></div>
+
+    <div class="feed-tabs" id="feedTabs">
+      <div class="tab on" data-t="all" style="--tc:#e6eeff;"><span class="ic">◈</span><span class="n" id="tabAll">0</span></div>
+      <div class="tab" data-t="eq" style="--tc:var(--eq);"><span class="ic">🌍</span><span class="n" id="tabEq">0</span></div>
+      <div class="tab" data-t="st" style="--tc:var(--st);"><span class="ic">🌀</span><span class="n" id="tabSt">0</span></div>
+      <div class="tab" data-t="wf" style="--tc:var(--wf);"><span class="ic">🔥</span><span class="n" id="tabWf">0</span></div>
+      <div class="tab" data-t="fl" style="--tc:var(--fl);"><span class="ic">🌊</span><span class="n" id="tabFl">0</span></div>
+    </div>
+
+    <div class="feed-tools">
+      <input class="feed-search" id="feedSearch" placeholder="ค้นหาสถานที่ / เหตุการณ์…">
+      <select class="feed-sort" id="feedSort">
+        <option value="severity">รุนแรงสุด</option>
+        <option value="time">ล่าสุด</option>
+      </select>
+    </div>
+  </div>
+  <div class="feed-list" id="feedList"></div>
+</div>
+
+<!-- ══ LEGEND ══ -->
+<div class="legend card ui-overlay">
+  <h2 class="sec">Legend</h2>
+  <div class="lg-row"><span class="badge9" style="background:var(--eq);box-shadow:0 0 7px var(--eq);"></span>Earthquake<span class="lg-src">USGS · 24h</span></div>
+  <div class="lg-row"><span class="badge9" style="background:var(--st);box-shadow:0 0 7px var(--st);"></span>Severe Storm<span class="lg-src">EONET/JTWC</span></div>
+  <div class="lg-row"><span class="badge9" style="background:var(--wf);box-shadow:0 0 7px var(--wf);"></span>Wildfire<span class="lg-src">EONET · 30d</span></div>
+  <div class="lg-row"><span class="badge9" style="background:var(--fl);box-shadow:0 0 7px var(--fl);"></span>Flood<span class="lg-src">EONET/GDACS</span></div>
+
+  <div class="lg-block">
+    <div class="lg-ramp">
+      <i style="background:#ffe98a"></i><i style="background:#ffc542"></i><i style="background:#ff9127"></i>
+      <i style="background:#ff5a2b"></i><i style="background:#ff2d55"></i><i style="background:#e0148c"></i>
+    </div>
+    <div class="lg-ticks"><span>M1</span><span>M3</span><span>M4.5</span><span>M6</span><span>M7+</span></div>
+    <div class="lg-scale">
+      <div><i class="lg-dot" style="width:5px;height:5px;background:#ffe98a;"></i><span>M2</span></div>
+      <div><i class="lg-dot" style="width:10px;height:10px;background:#ff9127;"></i><span>M4</span></div>
+      <div><i class="lg-dot" style="width:17px;height:17px;background:#ff2d55;"></i><span>M6</span></div>
+      <div><i class="lg-dot" style="width:25px;height:25px;background:#e0148c;"></i><span>M7+</span></div>
+    </div>
+  </div>
+
+  <div class="lg-note">ขนาดวง = แมกนิจูด · สีไล่ระดับเหลือง→แดง→ม่วงบานเย็น · วงแหวนคู่ = M6.0+</div>
+</div>
+
+<div class="status card ui-overlay">
+  <span class="live-dot"></span> Status: <span id="status">Loading...</span>
+</div>
+
+<div class="breaking ui-overlay">
+  <span class="label">BREAKING</span>
+  <div class="ticker" id="ticker"></div>
+</div>
+
+<!-- ══ BROADCAST UI ══ -->
+<div class="bc-exit bc-only ui-overlay" id="bcExit">✕ ออกจากโหมด Broadcast <span class="kbd">ESC</span></div>
+
+<div class="bc-stats bc-only ui-overlay" id="bcStats"></div>
+
+<div class="bc-lower bc-only ui-overlay" id="bcLower">
+  <div class="bc-accent"></div>
+  <div class="bc-body">
+    <div class="bc-kicker" id="bcKicker">—</div>
+    <div class="bc-title" id="bcTitle">กำลังโหลดข้อมูล…</div>
+    <div class="bc-sub" id="bcSub"></div>
+  </div>
+</div>
+
+<div class="bc-clock bc-only ui-overlay">
+  <div class="t" id="bcTime">--:--:--</div>
+  <div class="z" id="bcZone">LOCAL · UTC</div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/openlocationcode/1.0.4/openlocationcode.min.js"></script>
+<script>
+/* ══════════════════════════════════════════════════════════
+   CONFIG
+   ══════════════════════════════════════════════════════════ */
+const COLORS = { eq: '#ff2d55', wf: '#ff9500', fl: '#30a0ff', st: '#b06bff' };
+const TYPE_LABEL = { eq: 'QUAKE', st: 'STORM', wf: 'FIRE', fl: 'FLOOD' };
+const TYPE_KICKER = { eq: 'EARTHQUAKE · USGS', st: 'SEVERE STORM · NASA EONET',
+                      wf: 'WILDFIRE · NASA EONET', fl: 'FLOOD · EONET/GDACS' };
+const TYPE_ICON = { eq: '🌍', st: '🌀', wf: '🔥', fl: '🌊' };
+const REFRESH_MS = 300000;
+const EMPTY = { type: 'FeatureCollection', features: [] };
+
+const API = {
+  quake: 'https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.geojson',
+  storm: 'https://eonet.gsfc.nasa.gov/api/v3/events?category=severeStorms&status=open&days=30',
+  fire:  'https://eonet.gsfc.nasa.gov/api/v3/events?category=wildfires&status=open&days=30',
+  flood: 'https://eonet.gsfc.nasa.gov/api/v3/events?category=floods&status=open&days=90',
+  gdacs: 'result.geojson'
+};
+
+const EQ_RAMP = [
+  [0, '#ffe98a'], [2, '#ffd45c'], [3, '#ffab2e'], [4, '#ff7a2f'],
+  [5, '#ff4a3d'], [6, '#ff2d55'], [7, '#e0148c'], [8.5, '#b41ec8']
+];
+const eqColorExpr = ['interpolate', ['linear'], ['coalesce', ['get', 'mag'], 0], ...EQ_RAMP.flat()];
+function eqColorJS(mag) {
+  const m = Number(mag) || 0;
+  for (let i = EQ_RAMP.length - 1; i >= 0; i--) if (m >= EQ_RAMP[i][0]) return EQ_RAMP[i][1];
+  return EQ_RAMP[0][1];
+}
+
+/* ══════════════════════════════════════════════════════════
+   GEO UTILS
+   ══════════════════════════════════════════════════════════ */
+function normLon(v) {
+  let x = Number(v);
+  if (!isFinite(x)) return null;
+  x = ((x + 180) % 360 + 360) % 360 - 180;
+  return x;
+}
+function normLat(v) {
+  const y = Number(v);
+  if (!isFinite(y) || y < -90.0001 || y > 90.0001) return null;
+  return Math.max(-90, Math.min(90, y));
+}
+function safeLngLat(lng, lat) {
+  const x = normLon(lng), y = normLat(lat);
+  if (x === null || y === null) return null;
+  if (Math.abs(x) < 1e-9 && Math.abs(y) < 1e-9) return null;
+  return [x, y];
+}
+function ringCentroid(ring) {
+  if (!Array.isArray(ring) || !ring.length) return null;
+  let min = Infinity, max = -Infinity;
+  for (const p of ring) {
+    const x = Number(p && p[0]);
+    if (!isFinite(x)) continue;
+    if (x < min) min = x;
+    if (x > max) max = x;
+  }
+  const shift = (max - min) > 180;
+  let sx = 0, sy = 0, n = 0;
+  for (const p of ring) {
+    let x = Number(p && p[0]); const y = Number(p && p[1]);
+    if (!isFinite(x) || !isFinite(y)) continue;
+    if (shift && x < 0) x += 360;
+    sx += x; sy += y; n++;
+  }
+  if (!n) return null;
+  return safeLngLat(sx / n, sy / n);
+}
+function extractPoint(geom) {
+  if (!geom || !geom.coordinates) return null;
+  const c = geom.coordinates;
+  switch (geom.type) {
+    case 'Point': {
+      const ll = safeLngLat(c[0], c[1]);
+      if (!ll) return null;
+      const depth = Number(c[2]);
+      return { lng: ll[0], lat: ll[1], depth: isFinite(depth) ? depth : null };
+    }
+    case 'MultiPoint':
+    case 'LineString': {
+      const ll = ringCentroid(c);
+      return ll ? { lng: ll[0], lat: ll[1], depth: null } : null;
+    }
+    case 'Polygon': {
+      const ll = ringCentroid(c[0]);
+      return ll ? { lng: ll[0], lat: ll[1], depth: null } : null;
+    }
+    case 'MultiPolygon': {
+      const ll = ringCentroid(c[0] && c[0][0]);
+      return ll ? { lng: ll[0], lat: ll[1], depth: null } : null;
+    }
+    default: return null;
+  }
+}
+function unwrapLine(coords) {
+  const out = []; let prev = null;
+  for (const c of coords) {
+    const ll = safeLngLat(c[0], c[1]);
+    if (!ll) continue;
+    let lng = ll[0];
+    if (prev !== null) {
+      while (lng - prev > 180) lng -= 360;
+      while (prev - lng > 180) lng += 360;
+    }
+    out.push([lng, ll[1]]); prev = lng;
+  }
+  return out;
+}
+function angularDist(lat1, lon1, lat2, lon2) {
+  const R = Math.PI / 180;
+  const a = lat1 * R, b = lat2 * R, d = (lon2 - lon1) * R;
+  const v = Math.sin(a) * Math.sin(b) + Math.cos(a) * Math.cos(b) * Math.cos(d);
+  return Math.acos(Math.max(-1, Math.min(1, v))) / R;
+}
+function stormCat(kts) {
+  if (kts == null || isNaN(kts)) return { label: 'Storm System', short: 'STORM', color: '#b06bff', rank: 0 };
+  if (kts < 34)  return { label: 'Tropical Depression', short: 'TD', color: '#5ec8ff', rank: 1 };
+  if (kts < 64)  return { label: 'Tropical Storm',      short: 'TS', color: '#7dffb0', rank: 2 };
+  if (kts < 83)  return { label: 'Category 1',          short: 'C1', color: '#ffe066', rank: 3 };
+  if (kts < 96)  return { label: 'Category 2',          short: 'C2', color: '#ffb84d', rank: 4 };
+  if (kts < 113) return { label: 'Category 3',          short: 'C3', color: '#ff7a45', rank: 5 };
+  if (kts < 137) return { label: 'Category 4',          short: 'C4', color: '#ff3b6b', rank: 6 };
+  return               { label: 'Category 5',          short: 'C5', color: '#d633ff', rank: 7 };
+}
+function timeAgo(iso) {
+  if (!iso) return '-';
+  const diff = Date.now() - new Date(iso).getTime();
+  if (isNaN(diff)) return '-';
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return 'เมื่อสักครู่';
+  if (m < 60) return `${m} นาทีที่แล้ว`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h} ชม.ที่แล้ว`;
+  return `${Math.floor(h / 24)} วันที่แล้ว`;
+}
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
+
+/* ══════════════════════════════════════════════════════════
+   BASEMAP THEMES (OpenFreeMap · ไม่ต้องใช้ API key)
+   ══════════════════════════════════════════════════════════ */
+const THEMES = {
+  news: {
+    bg: '#1d3049', landcover: '#24405c', water: '#0b1b30', waterway: '#1a4972',
+    roadMinor: 'rgba(255,255,255,0.10)', roadMajor: 'rgba(255,255,255,0.22)',
+    boundary: 'rgba(150,200,255,0.55)', boundaryState: 'rgba(255,255,255,0.14)',
+    building: '#2a4361',
+    labelCity: 'rgba(232,242,255,0.9)', labelCountry: 'rgba(198,222,255,0.78)', halo: '#0c1a2b',
+    sky: '#14304f', horizon: '#3a6ea5', fog: '#16283f'
+  },
+  midnight: {
+    bg: '#070d18', landcover: '#0c1622', water: '#050b16', waterway: '#0f2a44',
+    roadMinor: 'rgba(255,255,255,0.06)', roadMajor: 'rgba(255,255,255,0.12)',
+    boundary: 'rgba(120,165,225,0.32)', boundaryState: 'rgba(255,255,255,0.07)',
+    building: '#111d2e',
+    labelCity: 'rgba(190,210,245,0.62)', labelCountry: 'rgba(170,195,235,0.5)', halo: '#05080f',
+    sky: '#08172a', horizon: '#1e3358', fog: '#070d18'
+  },
+  graphite: {
+    bg: '#2b3138', landcover: '#333a42', water: '#1a1f26', waterway: '#2c3a48',
+    roadMinor: 'rgba(255,255,255,0.13)', roadMajor: 'rgba(255,255,255,0.26)',
+    boundary: 'rgba(215,225,240,0.5)', boundaryState: 'rgba(255,255,255,0.15)',
+    building: '#3a424b',
+    labelCity: 'rgba(240,244,250,0.9)', labelCountry: 'rgba(220,228,240,0.8)', halo: '#20252b',
+    sky: '#26303c', horizon: '#4a5a6b', fog: '#252b33'
+  },
+  satellite: {
+    raster: true, bg: '#0a1420',
+    labelCity: 'rgba(255,255,255,0.95)', labelCountry: 'rgba(255,255,255,0.85)', halo: 'rgba(0,0,0,0.85)',
+    boundary: 'rgba(255,255,255,0.5)', boundaryState: 'rgba(255,255,255,0.2)',
+    sky: '#0e2338', horizon: '#2c5b8f', fog: '#0a1420'
+  }
+};
+
+const STYLE = {
+  version: 8,
+  glyphs: 'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf',
+  sources: {
+    openmaptiles: { type: 'vector', url: 'https://tiles.openfreemap.org/planet' },
+    esriImagery: {
+      type: 'raster',
+      tiles: ['https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
+      tileSize: 256, maxzoom: 17, attribution: 'Imagery &copy; Esri'
+    },
+    esriDark: {
+      type: 'raster',
+      tiles: ['https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}'],
+      tileSize: 256, maxzoom: 16, attribution: 'Tiles &copy; Esri'
+    }
+  },
+  layers: [
+    { id: 'bg', type: 'background', paint: { 'background-color': '#1d3049' } },
+    { id: 'raster-imagery', type: 'raster', source: 'esriImagery',
+      layout: { visibility: 'none' }, paint: { 'raster-opacity': 1, 'raster-saturation': -0.12 } },
+    { id: 'raster-dark', type: 'raster', source: 'esriDark',
+      layout: { visibility: 'none' }, paint: { 'raster-opacity': 0.9, 'raster-saturation': -0.2 } },
+
+    { id: 'landcover', type: 'fill', source: 'openmaptiles', 'source-layer': 'landcover',
+      paint: { 'fill-color': '#24405c', 'fill-opacity': 0.45 } },
+    { id: 'water', type: 'fill', source: 'openmaptiles', 'source-layer': 'water',
+      filter: ['!=', ['get', 'brunnel'], 'tunnel'], paint: { 'fill-color': '#0b1b30' } },
+    { id: 'waterway', type: 'line', source: 'openmaptiles', 'source-layer': 'waterway', minzoom: 5,
+      paint: { 'line-color': '#1a4972', 'line-width': ['interpolate', ['linear'], ['zoom'], 5, 0.5, 12, 2] } },
+    { id: 'road-minor', type: 'line', source: 'openmaptiles', 'source-layer': 'transportation', minzoom: 10,
+      paint: { 'line-color': 'rgba(255,255,255,0.10)', 'line-width': ['interpolate', ['linear'], ['zoom'], 10, 0.4, 16, 3] } },
+    { id: 'road-major', type: 'line', source: 'openmaptiles', 'source-layer': 'transportation', minzoom: 5,
+      filter: ['in', ['get', 'class'], ['literal', ['motorway', 'trunk', 'primary']]],
+      paint: { 'line-color': 'rgba(255,255,255,0.22)', 'line-width': ['interpolate', ['linear'], ['zoom'], 5, 0.5, 14, 3] } },
+    { id: 'building', type: 'fill', source: 'openmaptiles', 'source-layer': 'building', minzoom: 14,
+      paint: { 'fill-color': '#2a4361', 'fill-opacity': 0.6 } },
+
+    { id: 'boundary-state', type: 'line', source: 'openmaptiles', 'source-layer': 'boundary', minzoom: 4,
+      filter: ['==', ['get', 'admin_level'], 4],
+      paint: { 'line-color': 'rgba(255,255,255,0.14)', 'line-width': 0.7 } },
+    { id: 'boundary-country', type: 'line', source: 'openmaptiles', 'source-layer': 'boundary',
+      filter: ['<=', ['get', 'admin_level'], 2],
+      paint: { 'line-color': 'rgba(150,200,255,0.55)',
+               'line-width': ['interpolate', ['linear'], ['zoom'], 1, 0.6, 6, 1.5], 'line-opacity': 0.95 } },
+
+    { id: 'label-country', type: 'symbol', source: 'openmaptiles', 'source-layer': 'place', maxzoom: 8,
+      filter: ['==', ['get', 'class'], 'country'],
+      layout: {
+        'text-field': ['coalesce', ['get', 'name:latin'], ['get', 'name']],
+        'text-font': ['Noto Sans Regular'],
+        'text-size': ['interpolate', ['linear'], ['zoom'], 1, 9.5, 6, 14],
+        'text-transform': 'uppercase', 'text-letter-spacing': 0.14
+      },
+      paint: { 'text-color': 'rgba(198,222,255,0.78)', 'text-halo-color': '#0c1a2b', 'text-halo-width': 1.4 } },
+    { id: 'label-city', type: 'symbol', source: 'openmaptiles', 'source-layer': 'place', minzoom: 3.5,
+      filter: ['in', ['get', 'class'], ['literal', ['city', 'town']]],
+      layout: {
+        'text-field': ['coalesce', ['get', 'name:latin'], ['get', 'name']],
+        'text-font': ['Noto Sans Regular'],
+        'text-size': ['interpolate', ['linear'], ['zoom'], 3.5, 10, 12, 14.5]
+      },
+      paint: { 'text-color': 'rgba(232,242,255,0.9)', 'text-halo-color': '#0c1a2b', 'text-halo-width': 1.4 } }
+  ]
+};
+
+const VECTOR_BASE = ['landcover','water','waterway','road-minor','road-major','building'];
+const LABEL_LAYERS = ['label-country','label-city'];
+
+const map = new maplibregl.Map({
+  container: 'map',
+  style: STYLE,
+  center: [100.5018, 13.7563],
+  zoom: 2.2, minZoom: 1, maxZoom: 14,
+  dragRotate: false, pitchWithRotate: false, touchPitch: false,
+  attributionControl: { compact: true }
+});
+map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
+
+function setPaint(id, prop, val) {
+  if (val != null && map.getLayer(id)) { try { map.setPaintProperty(id, prop, val); } catch (e) {} }
+}
+function setVis(id, v) {
+  if (map.getLayer(id)) { try { map.setLayoutProperty(id, 'visibility', v ? 'visible' : 'none'); } catch (e) {} }
+}
+function setVisible(ids, v) { ids.forEach(id => setVis(id, v)); }
+
+/* ป้ายชื่อสถานที่ — เคารพสถานะ toggle เสมอ แม้จะสลับธีม */
+function applyLabelVisibility() {
+  const on = document.getElementById('labelToggle').checked;
+  setVisible(LABEL_LAYERS, on);
+}
+
+function applyTheme(key) {
+  const t = THEMES[key] || THEMES.news;
+  const isSat = !!t.raster;
+
+  setVis('raster-imagery', isSat);
+  setVis('raster-dark', false);
+  VECTOR_BASE.forEach(id => setVis(id, !isSat));
+
+  if (!isSat) {
+    setPaint('bg', 'background-color', t.bg);
+    setPaint('landcover', 'fill-color', t.landcover);
+    setPaint('water', 'fill-color', t.water);
+    setPaint('waterway', 'line-color', t.waterway);
+    setPaint('road-minor', 'line-color', t.roadMinor);
+    setPaint('road-major', 'line-color', t.roadMajor);
+    setPaint('building', 'fill-color', t.building);
+  } else {
+    setPaint('bg', 'background-color', t.bg);
+  }
+  setPaint('boundary-country', 'line-color', t.boundary);
+  setPaint('boundary-state', 'line-color', t.boundaryState);
+  setPaint('label-city', 'text-color', t.labelCity);
+  setPaint('label-city', 'text-halo-color', t.halo);
+  setPaint('label-country', 'text-color', t.labelCountry);
+  setPaint('label-country', 'text-halo-color', t.halo);
+
+  try {
+    map.setSky({
+      'sky-color': t.sky, 'sky-horizon-blend': 0.6,
+      'horizon-color': t.horizon, 'horizon-fog-blend': 0.7,
+      'fog-color': t.fog, 'fog-ground-blend': 0.85,
+      'atmosphere-blend': ['interpolate', ['linear'], ['zoom'], 0, 0.9, 5, 0.4, 8, 0]
+    });
+  } catch (e) {}
+
+  document.body.style.background = t.bg;
+  applyLabelVisibility();   // สลับธีมแล้วป้ายต้องคงสถานะเดิม
+}
+
+let autoFellBack = false;
+map.on('error', e => {
+  if (!autoFellBack && e && e.sourceId === 'openmaptiles') {
+    autoFellBack = true;
+    console.warn('Vector tiles มีปัญหา → ใช้ raster สำรอง');
+    VECTOR_BASE.forEach(id => setVis(id, false));
+    setVis('raster-dark', true);
+  }
+  const msg = String((e && e.error && e.error.message) || '');
+  if (msg.includes('glyph') || msg.includes('font')) {
+    LABEL_LAYERS.forEach(id => { if (map.getLayer(id)) map.removeLayer(id); });
+  }
+});
+
+/* ══════════════════════════════════════════════════════════
+   DATA LAYERS
+   ══════════════════════════════════════════════════════════ */
+const styleReady = new Promise(resolve => {
+  map.on('style.load', () => {
+    try { map.setProjection({ type: 'globe' }); } catch (e) { console.warn('Globe ไม่รองรับ:', e); }
+    applyTheme('news');
+    initLayers();
+    resolve();
+  });
+});
+
+function initLayers() {
+  ['eq', 'wf', 'fl', 'st', 'sttrack'].forEach(k => map.addSource(k, { type: 'geojson', data: EMPTY }));
+
+  map.addLayer({ id: 'st-track-glow', type: 'line', source: 'sttrack',
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: { 'line-color': ['get', 'color'],
+             'line-width': ['interpolate', ['linear'], ['zoom'], 1, 5, 6, 12],
+             'line-opacity': 0.16, 'line-blur': 4 } });
+  map.addLayer({ id: 'st-track', type: 'line', source: 'sttrack',
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: { 'line-color': ['get', 'color'],
+             'line-width': ['interpolate', ['linear'], ['zoom'], 1, 1.4, 6, 3],
+             'line-opacity': 0.8, 'line-dasharray': [2.5, 1.6] } });
+
+  map.addLayer({ id: 'fl-glow', type: 'circle', source: 'fl',
+    paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 1, 9, 6, 20],
+             'circle-color': COLORS.fl, 'circle-opacity': 0.18, 'circle-blur': 1 } });
+  map.addLayer({ id: 'fl-core', type: 'circle', source: 'fl',
+    paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 1, 4, 6, 8],
+             'circle-color': COLORS.fl, 'circle-opacity': 0.92,
+             'circle-stroke-width': 1.3, 'circle-stroke-color': 'rgba(255,255,255,0.8)' } });
+
+  map.addLayer({ id: 'wf-heat', type: 'heatmap', source: 'wf', maxzoom: 7,
+    paint: {
+      'heatmap-weight': 0.55,
+      'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 1, 0.7, 6, 2.2],
+      'heatmap-color': ['interpolate', ['linear'], ['heatmap-density'],
+        0, 'rgba(0,0,0,0)', 0.15, 'rgba(110,30,0,0.4)', 0.35, 'rgba(190,65,0,0.6)',
+        0.55, 'rgba(255,125,0,0.75)', 0.75, '#ff9500', 0.9, '#ffc247', 1, '#fff3c9'],
+      'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 1, 9, 4, 22, 7, 40],
+      'heatmap-opacity': ['interpolate', ['linear'], ['zoom'], 4.5, 0.9, 7, 0]
+    } });
+  map.addLayer({ id: 'wf-glow', type: 'circle', source: 'wf', minzoom: 4,
+    paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 4, 7, 8, 16],
+             'circle-color': COLORS.wf, 'circle-blur': 1,
+             'circle-opacity': ['interpolate', ['linear'], ['zoom'], 4, 0, 6, 0.18] } });
+  map.addLayer({ id: 'wf-core', type: 'circle', source: 'wf', minzoom: 4,
+    paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 4, 2.5, 8, 7],
+             'circle-color': COLORS.wf,
+             'circle-opacity': ['interpolate', ['linear'], ['zoom'], 4, 0, 5.5, 0.94],
+             'circle-stroke-width': 1, 'circle-stroke-color': 'rgba(255,255,255,0.75)',
+             'circle-stroke-opacity': ['interpolate', ['linear'], ['zoom'], 4, 0, 5.5, 1] } });
+
+  map.addLayer({ id: 'st-glow', type: 'circle', source: 'st',
+    paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'],
+               1, ['interpolate', ['linear'], ['coalesce', ['get','kts'], 0], 0, 10, 60, 20, 140, 34],
+               6, ['interpolate', ['linear'], ['coalesce', ['get','kts'], 0], 0, 20, 60, 42, 140, 72]],
+             'circle-color': ['get', 'color'], 'circle-opacity': 0.16, 'circle-blur': 1 } });
+  map.addLayer({ id: 'st-core', type: 'circle', source: 'st',
+    paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'],
+               1, ['interpolate', ['linear'], ['coalesce', ['get','kts'], 0], 0, 4, 60, 9, 140, 15],
+               6, ['interpolate', ['linear'], ['coalesce', ['get','kts'], 0], 0, 8, 60, 18, 140, 30]],
+             'circle-color': ['get', 'color'], 'circle-opacity': 0.93,
+             'circle-stroke-width': 1.6, 'circle-stroke-color': 'rgba(255,255,255,0.88)',
+             'circle-sort-key': ['*', -1, ['coalesce', ['get','kts'], 0]] } });
+
+  map.addLayer({ id: 'eq-glow', type: 'circle', source: 'eq',
+    paint: {
+      'circle-radius': ['interpolate', ['linear'], ['zoom'],
+        1, ['interpolate', ['linear'], ['coalesce', ['get','mag'], 0], 0, 5, 5, 20, 8, 44],
+        6, ['interpolate', ['linear'], ['coalesce', ['get','mag'], 0], 0, 10, 5, 42, 8, 88]],
+      'circle-color': eqColorExpr,
+      'circle-opacity': ['interpolate', ['linear'], ['coalesce', ['get','mag'], 0], 0, 0.07, 4, 0.15, 7, 0.3],
+      'circle-blur': 1
+    } });
+  map.addLayer({ id: 'eq-ring', type: 'circle', source: 'eq',
+    filter: ['>=', ['coalesce', ['get','mag'], 0], 4.5],
+    paint: {
+      'circle-radius': ['interpolate', ['linear'], ['zoom'],
+        1, ['interpolate', ['linear'], ['coalesce', ['get','mag'], 0], 4.5, 11, 7, 22, 9, 30],
+        6, ['interpolate', ['linear'], ['coalesce', ['get','mag'], 0], 4.5, 22, 7, 44, 9, 60]],
+      'circle-color': 'rgba(0,0,0,0)', 'circle-stroke-width': 1.2,
+      'circle-stroke-color': eqColorExpr, 'circle-stroke-opacity': 0.55
+    } });
+  map.addLayer({ id: 'eq-core', type: 'circle', source: 'eq',
+    paint: {
+      'circle-radius': ['interpolate', ['linear'], ['zoom'],
+        1, ['interpolate', ['linear'], ['coalesce', ['get','mag'], 0], 0, 2, 3, 4.5, 5, 9, 7, 15, 9, 22],
+        6, ['interpolate', ['linear'], ['coalesce', ['get','mag'], 0], 0, 4, 3, 9, 5, 18, 7, 30, 9, 44]],
+      'circle-color': eqColorExpr,
+      'circle-opacity': ['interpolate', ['linear'], ['coalesce', ['get','mag'], 0], 0, 0.72, 4, 0.9, 6, 1],
+      'circle-stroke-width': ['interpolate', ['linear'], ['coalesce', ['get','mag'], 0], 0, 0.6, 4, 1.2, 6, 2.2],
+      'circle-stroke-color': ['interpolate', ['linear'], ['coalesce', ['get','mag'], 0],
+        0, 'rgba(255,255,255,0.35)', 4, 'rgba(255,255,255,0.7)', 6, 'rgba(255,255,255,0.98)'],
+      'circle-sort-key': ['*', -1, ['coalesce', ['get','mag'], 0]]
+    } });
+  map.addLayer({ id: 'eq-hot', type: 'circle', source: 'eq',
+    filter: ['>=', ['coalesce', ['get','mag'], 0], 6],
+    paint: {
+      'circle-radius': ['interpolate', ['linear'], ['zoom'],
+        1, ['interpolate', ['linear'], ['coalesce', ['get','mag'], 0], 6, 3, 9, 7],
+        6, ['interpolate', ['linear'], ['coalesce', ['get','mag'], 0], 6, 6, 9, 14]],
+      'circle-color': '#fff6d8', 'circle-opacity': 0.95, 'circle-blur': 0.35
+    } });
+
+  ['eq-core', 'st-core', 'wf-core', 'fl-core'].forEach(id => {
+    map.on('mouseenter', id, () => map.getCanvas().style.cursor = 'pointer');
+    map.on('mouseleave', id, () => map.getCanvas().style.cursor = '');
+    map.on('click', id, e => { if (!BC.on) showPopup(featToEvent(e.features[0])); });
+  });
+}
+
+/* ══════════════════════════════════════════════════════════
+   PULSE + occlusion
+   ══════════════════════════════════════════════════════════ */
+let pulseMarkers = [];
+let isGlobe = true;
+
+function renderPulses(features) {
+  pulseMarkers.forEach(p => p.marker.remove());
+  pulseMarkers = [];
+  features.filter(f => (f.properties.mag || 0) >= 5).forEach(f => {
+    const mag = f.properties.mag;
+    const size = 28 + (mag - 5) * 11;
+    const col = eqColorJS(mag);
+    const [lng, lat] = f.geometry.coordinates;
+    const el = document.createElement('div');
+    el.className = 'pulse-marker';
+    el.style.color = col;
+    el.innerHTML = `
+      <div class="pulse-ring" style="width:${size}px;height:${size}px;left:${-size/2}px;top:${-size/2}px;"></div>
+      <div class="pulse-ring" style="width:${size}px;height:${size}px;left:${-size/2}px;top:${-size/2}px;"></div>`;
+    const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
+      .setLngLat([lng, lat]).addTo(map);
+    pulseMarkers.push({ marker, mag, lng, lat });
+  });
+  updateOcclusion();
+}
+function updateOcclusion() {
+  if (!pulseMarkers.length) return;
+  const c = map.getCenter();
+  const near = map.getZoom() > 5;
+  pulseMarkers.forEach(p => {
+    const vis = (!isGlobe || near) ? true : angularDist(c.lat, c.lng, p.lat, p.lng) < 87;
+    p.marker.getElement().style.visibility = vis ? 'visible' : 'hidden';
+  });
+}
+map.on('move', updateOcclusion);
+map.on('zoom', updateOcclusion);
+
+function syncPulses() {
+  const minMag = parseFloat(document.getElementById('magFilter').value);
+  const on = document.getElementById('eqToggle').checked;
+  pulseMarkers.forEach(p => {
+    p.marker.getElement().style.display = (on && p.mag >= minMag) ? '' : 'none';
+  });
+  updateOcclusion();
+}
+
+/* ══════════════════════════════════════════════════════════
+   EVENT MODEL + POPUP
+   ══════════════════════════════════════════════════════════ */
+let allEvents = [];
+let activePopup = null;
+
+function featToEvent(f) {
+  const p = f.properties || {};
+  const c = f.geometry.coordinates;
+  return {
+    id: p.id, type: p.type, title: p.title,
+    lng: Number(c[0]), lat: Number(c[1]),
+    depth: p.depth != null ? Number(p.depth) : null,
+    mag: p.mag != null ? Number(p.mag) : null,
+    kts: p.kts != null ? Number(p.kts) : null,
+    time: p.time || p.date,
+    place: p.place, location: p.location, url: p.url
+  };
+}
+function eventColor(ev) {
+  return ev.type === 'eq' ? eqColorJS(ev.mag)
+       : ev.type === 'st' ? stormCat(ev.kts).color : COLORS[ev.type];
+}
+
+function showPopup(ev) {
+  if (activePopup) activePopup.remove();
+  const plusCode = OpenLocationCode.encode(ev.lat, ev.lng, 10);
+  const mapsUrl = `https://www.google.com/maps/search/${encodeURIComponent(plusCode)}`;
+  const coordLine = `<span class="pop-meta">${ev.lat.toFixed(3)}°, ${ev.lng.toFixed(3)}°</span>`;
+  let html;
+
+  if (ev.type === 'eq') {
+    const col = eqColorJS(ev.mag);
+    html = `
+      <div class="pop-title" style="color:${col};">🌍 Magnitude ${ev.mag ?? '-'}</div>
+      <div style="margin-bottom:7px;"><span class="pop-chip" style="color:${col};">
+        ${ev.mag >= 7 ? 'MAJOR' : ev.mag >= 6 ? 'STRONG' : ev.mag >= 5 ? 'MODERATE' : ev.mag >= 4 ? 'LIGHT' : 'MINOR'}
+      </span></div>
+      <hr class="pop-sep">
+      <div class="pop-row">
+        📍 ${esc(ev.place)}<br>
+        🕐 ${ev.time ? new Date(ev.time).toLocaleString('th-TH') : '-'}
+        <span class="pop-meta">· ${timeAgo(ev.time)}</span><br>
+        📏 ความลึก ${ev.depth != null ? ev.depth.toFixed(1) : '-'} กม.<br>
+        ${coordLine}
+      </div>
+      <hr class="pop-sep">
+      <a class="pop-link" style="color:${col};" href="${ev.url}" target="_blank">ดูรายละเอียด USGS →</a>`;
+  } else if (ev.type === 'st') {
+    const c = stormCat(ev.kts);
+    html = `
+      <div class="pop-title" style="color:${c.color};">🌀 ${esc(ev.title)}</div>
+      <div style="margin-bottom:7px;"><span class="pop-chip" style="color:${c.color};">${c.short} · ${c.label}</span></div>
+      <hr class="pop-sep">
+      <div class="pop-row">
+        💨 ความเร็วลม <b>${ev.kts != null ? ev.kts : '-'}</b> kts
+        <span class="pop-meta">(~${ev.kts != null ? Math.round(ev.kts * 1.852) : '-'} กม./ชม.)</span><br>
+        🗓 ${ev.time ? String(ev.time).split('T')[0] : '-'}
+        <span class="pop-meta">· ${timeAgo(ev.time)}</span><br>
+        ${coordLine}
+      </div>
+      <hr class="pop-sep">
+      <a class="pop-link" style="color:${c.color};" href="${mapsUrl}" target="_blank">ดูบน Google Maps →</a>`;
+  } else {
+    const icon = TYPE_ICON[ev.type];
+    const col = COLORS[ev.type];
+    html = `
+      <div class="pop-title" style="color:${col};">${icon} ${esc(ev.title)}</div>
+      <hr class="pop-sep">
+      <div class="pop-row">
+        <span id="popLoc">📍 ${ev.location ? esc(ev.location) : '<span class="pop-meta">กำลังค้นหาตำแหน่ง…</span>'}</span><br>
+        ${ev.time ? `🗓 ${String(ev.time).split('T')[0]} <span class="pop-meta">· ${timeAgo(ev.time)}</span><br>` : ''}
+        ${coordLine}
+      </div>
+      <hr class="pop-sep">
+      <a class="pop-link" style="color:${col};" href="${mapsUrl}" target="_blank">ดูบน Google Maps →</a>`;
+  }
+
+  activePopup = new maplibregl.Popup({ maxWidth: '300px', offset: 12 })
+    .setLngLat([ev.lng, ev.lat]).setHTML(html).addTo(map);
+
+  if ((ev.type === 'wf' || ev.type === 'fl') && !ev.location) {
+    const pop = activePopup;
+    reverseGeocode(ev.lat, ev.lng).then(geo => {
+      if (!pop.isOpen()) return;
+      const el = pop.getElement().querySelector('#popLoc');
+      if (!el) return;
+      el.innerHTML = geo.province
+        ? `📍 ${esc(geo.province)}${geo.country && geo.country !== geo.province ? ` <span class="pop-meta">(${esc(geo.country)})</span>` : ''}`
+        : `📍 <span class="pop-meta">พื้นที่ไม่มีชื่อเรียก (นอกเขตปกครอง)</span>`;
+    });
+  }
+}
+
+function focusEvent(ev) {
+  map.flyTo({ center: [ev.lng, ev.lat], zoom: Math.max(map.getZoom(), 4.5), duration: 1400, essential: true });
+  map.once('moveend', () => showPopup(ev));
+}
+
+/* ══════════════════════════════════════════════════════════
+   GEOCODING
+   ══════════════════════════════════════════════════════════ */
+const GEOCODE_API_KEY = '69fdad57cf850933585115gmlce2259';
+const geoCache = {};
+async function reverseGeocode(lat, lng) {
+  const key = `${lat.toFixed(2)},${lng.toFixed(2)}`;
+  if (geoCache[key]) return geoCache[key];
+  try {
+    const r = await fetch(`https://geocode.maps.co/reverse?lat=${lat}&lon=${lng}&api_key=${GEOCODE_API_KEY}`);
+    if (r.ok) {
+      const d = await r.json();
+      const a = d.address || {};
+      const province = a.county || a.state_district || a.province || a.state || a.country || null;
+      if (province) { const res = { province, country: a.country || '' }; geoCache[key] = res; return res; }
+    }
+  } catch (e) { console.warn('Geocode error:', e); }
+  const res = { province: null, country: '' };
+  geoCache[key] = res;
+  return res;
+}
+
+/* ══════════════════════════════════════════════════════════
+   DATA LOADERS
+   ══════════════════════════════════════════════════════════ */
+let dropped = 0;
+
+async function loadEarthquakes() {
+  const data = await (await fetch(API.quake)).json();
+  const features = [];
+  for (const f of data.features) {
+    const pt = extractPoint(f.geometry);
+    if (!pt) { dropped++; continue; }
+    features.push({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [pt.lng, pt.lat] },
+      properties: {
+        id: f.id, type: 'eq', mag: f.properties.mag,
+        title: `M${f.properties.mag ?? '?'} ${f.properties.place || ''}`.trim(),
+        place: f.properties.place, time: f.properties.time,
+        url: f.properties.url, depth: pt.depth
+      }
+    });
+  }
+  map.getSource('eq').setData({ type: 'FeatureCollection', features });
+  renderPulses(features);
+  document.getElementById('eqCount').innerText = features.length;
+  return features.map(featToEvent);
+}
+
+async function loadStorms() {
+  const data = await (await fetch(API.storm)).json();
+  const points = [], tracks = [];
+  (data.events || []).forEach(ev => {
+    const geos = (ev.geometry || []).filter(g => g && g.coordinates)
+      .slice().sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
+    if (!geos.length) return;
+    const last = geos[geos.length - 1];
+    const pt = extractPoint(last);
+    if (!pt) { dropped++; return; }
+    const kts = last.magnitudeValue != null ? Number(last.magnitudeValue) : null;
+    const cat = stormCat(kts);
+
+    points.push({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [pt.lng, pt.lat] },
+      properties: {
+        id: ev.id, type: 'st', title: ev.title, kts, color: cat.color,
+        date: last.date, url: (ev.sources && ev.sources[0]) ? ev.sources[0].url : null
+      }
+    });
+
+    const raw = [];
+    for (const g of geos) { const p = extractPoint(g); if (p) raw.push([p.lng, p.lat]); }
+    const line = unwrapLine(raw);
+    if (line.length > 1) {
+      tracks.push({ type: 'Feature', geometry: { type: 'LineString', coordinates: line },
+                    properties: { id: ev.id, title: ev.title, color: cat.color } });
+    }
+  });
+  map.getSource('st').setData({ type: 'FeatureCollection', features: points });
+  map.getSource('sttrack').setData({ type: 'FeatureCollection', features: tracks });
+  document.getElementById('stCount').innerText = points.length;
+  return points.map(featToEvent);
+}
+
+function eonetToPoints(events, type) {
+  const features = [];
+  for (const ev of events || []) {
+    const geos = (ev.geometry || []).filter(g => g && g.coordinates);
+    if (!geos.length) continue;
+    const g = geos[geos.length - 1];
+    const pt = extractPoint(g);
+    if (!pt) { dropped++; continue; }
+    features.push({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [pt.lng, pt.lat] },
+      properties: { id: ev.id, type, title: ev.title, date: g.date }
+    });
+  }
+  return features;
+}
+
+async function loadWildfires() {
+  const data = await (await fetch(API.fire)).json();
+  const features = eonetToPoints(data.events, 'wf');
+  map.getSource('wf').setData({ type: 'FeatureCollection', features });
+  document.getElementById('wfCount').innerText = features.length;
+  return features.map(featToEvent);
+}
+
+async function loadFloods() {
+  try {
+    const data = await (await fetch(API.flood)).json();
+    const features = eonetToPoints(data.events, 'fl');
+    if (!features.length) return loadFloodsFromGDACS();
+    map.getSource('fl').setData({ type: 'FeatureCollection', features });
+    document.getElementById('flCount').innerText = features.length;
+    return features.map(featToEvent);
+  } catch (err) {
+    console.error('EONET floods → fallback GDACS', err);
+    return loadFloodsFromGDACS();
+  }
+}
+
+async function loadFloodsFromGDACS() {
+  try {
+    const data = await (await fetch(API.gdacs)).json();
+    const today = new Date();
+    const endDate = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+    const startDate = new Date(endDate); startDate.setDate(endDate.getDate() - 60);
+    const features = [];
+    for (const f of (data.features || [])) {
+      const p = f.properties || {};
+      const t = new Date(p.datemodified);
+      if (p.eventtype !== 'FL') continue;
+      if (!['Orange', 'Red'].includes(p.alertlevel)) continue;
+      if (!(t >= startDate && t <= endDate)) continue;
+      const pt = extractPoint(f.geometry);
+      if (!pt) { dropped++; continue; }
+      features.push({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [pt.lng, pt.lat] },
+        properties: {
+          id: p.eventid, type: 'fl', title: p.name || 'Flood', date: p.datemodified,
+          location: `${p.name || ''}${p.country ? `, ${p.country}` : ''}`
+        }
+      });
+    }
+    map.getSource('fl').setData({ type: 'FeatureCollection', features });
+    document.getElementById('flCount').innerText = features.length;
+    return features.map(featToEvent);
+  } catch (err) {
+    console.error('GDACS ERROR:', err);
+    document.getElementById('flCount').innerText = '0';
+    return [];
+  }
+}
+
+/* ══════════════════════════════════════════════════════════
+   EVENT FEED + แท็บกรอง
+   ══════════════════════════════════════════════════════════ */
+let activeTab = 'all';
+
+function severityScore(ev) {
+  if (ev.type === 'eq') return (ev.mag || 0) * 10;
+  if (ev.type === 'st') return stormCat(ev.kts).rank * 12 + 5;
+  return 1;
+}
+
+function baseFiltered() {
+  const q = document.getElementById('feedSearch').value.trim().toLowerCase();
+  const minMag = parseFloat(document.getElementById('magFilter').value);
+  const on = {
+    eq: document.getElementById('eqToggle').checked,
+    st: document.getElementById('stToggle').checked,
+    wf: document.getElementById('wfToggle').checked,
+    fl: document.getElementById('flToggle').checked
+  };
+  return allEvents.filter(ev => {
+    if (!on[ev.type]) return false;
+    if (ev.type === 'eq' && (ev.mag || 0) < minMag) return false;
+    if (q && !(`${ev.title} ${ev.place || ''} ${ev.location || ''}`.toLowerCase().includes(q))) return false;
+    return true;
+  });
+}
+
+function renderFeed() {
+  const list = document.getElementById('feedList');
+  const sort = document.getElementById('feedSort').value;
+  const base = baseFiltered();
+
+  const byType = { eq: 0, st: 0, wf: 0, fl: 0 };
+  base.forEach(e => { if (byType[e.type] != null) byType[e.type]++; });
+  document.getElementById('tabAll').innerText = base.length;
+  document.getElementById('tabEq').innerText  = byType.eq;
+  document.getElementById('tabSt').innerText  = byType.st;
+  document.getElementById('tabWf').innerText  = byType.wf;
+  document.getElementById('tabFl').innerText  = byType.fl;
+
+  let items = activeTab === 'all' ? base : base.filter(e => e.type === activeTab);
+  items.sort((a, b) => sort === 'time'
+    ? new Date(b.time || 0) - new Date(a.time || 0)
+    : severityScore(b) - severityScore(a) || new Date(b.time || 0) - new Date(a.time || 0));
+
+  document.getElementById('feedCount').innerText = items.length;
+  items = items.slice(0, 150);
+
+  if (!items.length) {
+    list.innerHTML = `<div class="feed-empty">ไม่พบเหตุการณ์ตามเงื่อนไข</div>`;
+    return;
+  }
+
+  list.innerHTML = items.map((ev, i) => {
+    const color = eventColor(ev);
+    const val = ev.type === 'eq' ? `M${(ev.mag ?? 0).toFixed(1)}`
+              : ev.type === 'st' ? stormCat(ev.kts).short : '';
+    return `
+      <div class="feed-item" data-i="${i}">
+        <span class="feed-bar" style="background:${color};box-shadow:0 0 7px ${color};"></span>
+        <div class="feed-body">
+          <div class="feed-title">${esc(ev.title)}</div>
+          <div class="feed-meta">
+            <span class="feed-tag" style="color:${color};">${TYPE_LABEL[ev.type]}</span>
+            <span>${timeAgo(ev.time)}</span>
+          </div>
+        </div>
+        ${val ? `<span class="feed-val" style="color:${color};">${val}</span>` : ''}
+      </div>`;
+  }).join('');
+
+  [...list.querySelectorAll('.feed-item')].forEach(el => {
+    el.onclick = () => {
+      list.querySelectorAll('.feed-item').forEach(x => x.classList.remove('active'));
+      el.classList.add('active');
+      focusEvent(items[+el.dataset.i]);
+    };
+  });
+}
+
+document.querySelectorAll('#feedTabs .tab').forEach(tab => {
+  tab.onclick = () => {
+    document.querySelectorAll('#feedTabs .tab').forEach(t => t.classList.remove('on'));
+    tab.classList.add('on');
+    activeTab = tab.dataset.t;
+    document.getElementById('feedList').scrollTop = 0;
+    renderFeed();
+  };
+});
+
+/* ══════════════════════════════════════════════════════════
+   TICKER
+   ══════════════════════════════════════════════════════════ */
+function renderTicker() {
+  const top = [];
+  allEvents.filter(e => e.type === 'eq' && (e.mag || 0) >= 5)
+    .sort((a, b) => b.mag - a.mag).slice(0, 3)
+    .forEach(e => top.push(`🌍 M${e.mag} — ${e.place}`));
+  allEvents.filter(e => e.type === 'st')
+    .sort((a, b) => (b.kts || 0) - (a.kts || 0)).slice(0, 3)
+    .forEach(e => top.push(`🌀 ${e.title} — ${stormCat(e.kts).label} (${e.kts ?? '-'} kts)`));
+  const fires = allEvents.filter(e => e.type === 'wf').length;
+  if (fires) top.push(`🔥 ไฟป่าที่ยังดำเนินอยู่ ${fires} จุดทั่วโลก`);
+  const list = top.length ? top.slice(0, 6) : ['ไม่มีการแจ้งเตือนระดับสูงในขณะนี้'];
+  document.getElementById('ticker').innerHTML = `<span>${list.map(esc).join('  •  ')}</span>`;
+}
+
+/* ══════════════════════════════════════════════════════════
+   AUTO-SPIN GLOBE
+   ══════════════════════════════════════════════════════════ */
+let spinEnabled = false;
+let userInteracting = false;
+let resumeTimer = null;
+let secsPerRev = 120;
+
+function spinGlobe() {
+  if (!spinEnabled || userInteracting) return;
+  const zoom = map.getZoom();
+  if (zoom > 5) return;                       // ซูมใกล้แล้วหยุดหมุน
+  let degPerSec = 360 / secsPerRev;
+  if (zoom > 3) degPerSec *= (5 - zoom) / 2;  // ยิ่งซูมเข้ายิ่งช้าลง
+  const c = map.getCenter();
+  c.lng -= degPerSec;
+  map.easeTo({ center: c, duration: 1000, easing: n => n });
+}
+map.on('moveend', spinGlobe);
+
+function pauseSpin() {
+  userInteracting = true;
+  clearTimeout(resumeTimer);
+}
+function resumeSpinSoon(delay = 3500) {
+  clearTimeout(resumeTimer);
+  resumeTimer = setTimeout(() => { userInteracting = false; spinGlobe(); }, delay);
+}
+['mousedown', 'touchstart', 'wheel'].forEach(evt =>
+  map.on(evt, () => { pauseSpin(); resumeSpinSoon(); }));
+['dragend', 'pitchend', 'rotateend', 'zoomend'].forEach(evt =>
+  map.on(evt, () => resumeSpinSoon()));
+
+function setSpin(on) {
+  spinEnabled = on;
+  document.getElementById('spinToggle').checked = on;
+  if (on) { userInteracting = false; spinGlobe(); }
+}
+
+/* ══════════════════════════════════════════════════════════
+   BROADCAST MODE
+   ══════════════════════════════════════════════════════════ */
+const BC = { on: false, idx: 0, rotateTimer: null, idleTimer: null, prevSpin: false, prevGlobe: true };
+
+function bcHeadline(ev) {
+  if (ev.type === 'eq') {
+    const sev = ev.mag >= 7 ? 'MAJOR' : ev.mag >= 6 ? 'STRONG' : ev.mag >= 5 ? 'MODERATE' : 'LIGHT';
+    return {
+      kicker: `${TYPE_KICKER.eq} <span class="sub">· ${sev}</span>`,
+      title: `M${(ev.mag ?? 0).toFixed(1)} — ${ev.place || 'ไม่ระบุตำแหน่ง'}`,
+      sub: `ลึก ${ev.depth != null ? ev.depth.toFixed(0) : '-'} กม. · ${timeAgo(ev.time)} · ${ev.lat.toFixed(2)}°, ${ev.lng.toFixed(2)}°`
+    };
+  }
+  if (ev.type === 'st') {
+    const c = stormCat(ev.kts);
+    return {
+      kicker: `${TYPE_KICKER.st} <span class="sub">· ${c.short}</span>`,
+      title: ev.title,
+      sub: `${c.label} · ลม ${ev.kts ?? '-'} kts (~${ev.kts != null ? Math.round(ev.kts * 1.852) : '-'} กม./ชม.) · ${timeAgo(ev.time)}`
+    };
+  }
+  return {
+    kicker: TYPE_KICKER[ev.type],
+    title: ev.title,
+    sub: `${ev.location ? ev.location + ' · ' : ''}${timeAgo(ev.time)} · ${ev.lat.toFixed(2)}°, ${ev.lng.toFixed(2)}°`
+  };
+}
+
+function bcTopEvents() {
+  return allEvents.slice()
+    .sort((a, b) => severityScore(b) - severityScore(a) || new Date(b.time || 0) - new Date(a.time || 0))
+    .slice(0, 10);
+}
+
+function bcRenderLower() {
+  const items = bcTopEvents();
+  const lower = document.getElementById('bcLower');
+  if (!items.length) {
+    document.getElementById('bcKicker').innerText = 'GLOBAL DISASTER MONITOR';
+    document.getElementById('bcTitle').innerText = 'ไม่มีเหตุการณ์ในขณะนี้';
+    document.getElementById('bcSub').innerText = '';
+    return;
+  }
+  BC.idx = BC.idx % items.length;
+  const ev = items[BC.idx];
+  const h = bcHeadline(ev);
+  const col = eventColor(ev);
+
+  lower.style.setProperty('--c', col);
+  document.getElementById('bcKicker').innerHTML = `${TYPE_ICON[ev.type]} ${h.kicker}`;
+  document.getElementById('bcTitle').innerText = h.title;
+  document.getElementById('bcSub').innerText = h.sub;
+
+  // เล่นอนิเมชันเข้าใหม่ทุกครั้งที่เปลี่ยนข่าว
+  lower.style.animation = 'none';
+  void lower.offsetWidth;
+  lower.style.animation = '';
+}
+
+function bcRenderStats() {
+  const c = { eq: 0, st: 0, wf: 0, fl: 0 };
+  allEvents.forEach(e => { if (c[e.type] != null) c[e.type]++; });
+  document.getElementById('bcStats').innerHTML = `
+    <div class="bc-stat" style="--c:${COLORS.eq}"><span class="lbl">EARTHQUAKES 24H</span><span class="val">${c.eq}</span></div>
+    <div class="bc-stat" style="--c:${COLORS.st}"><span class="lbl">ACTIVE STORMS</span><span class="val">${c.st}</span></div>
+    <div class="bc-stat" style="--c:${COLORS.wf}"><span class="lbl">WILDFIRES</span><span class="val">${c.wf}</span></div>
+    <div class="bc-stat" style="--c:${COLORS.fl}"><span class="lbl">FLOODS</span><span class="val">${c.fl}</span></div>`;
+}
+
+function bcTickClock() {
+  const now = new Date();
+  document.getElementById('bcTime').innerText = now.toLocaleTimeString('th-TH', { hour12: false });
+  const utc = now.toISOString().substr(11, 8);
+  document.getElementById('bcZone').innerText = `LOCAL · UTC ${utc}`;
+}
+
+function bcMarkActive() {
+  document.body.classList.remove('idle');
+  clearTimeout(BC.idleTimer);
+  BC.idleTimer = setTimeout(() => {
+    if (BC.on) document.body.classList.add('idle');
+  }, 3500);
+}
+
+function enterBroadcast() {
+  if (BC.on) return;
+  BC.on = true;
+  document.body.classList.add('broadcast');
+  document.getElementById('bcToggle').checked = true;
+  if (activePopup) { activePopup.remove(); activePopup = null; }
+
+  // จำสถานะเดิมไว้คืนตอนออก
+  BC.prevSpin = spinEnabled;
+  BC.prevGlobe = isGlobe;
+
+  // บังคับ globe + หมุนอัตโนมัติ
+  if (!isGlobe) {
+    isGlobe = true;
+    document.getElementById('globeToggle').checked = true;
+    try { map.setProjection({ type: 'globe' }); } catch (e) {}
+  }
+  map.easeTo({ zoom: Math.min(map.getZoom(), 2.4), duration: 1200 });
+  setSpin(true);
+
+  BC.idx = 0;
+  bcRenderLower();
+  bcRenderStats();
+  bcTickClock();
+  clearInterval(BC.rotateTimer);
+  BC.rotateTimer = setInterval(() => { BC.idx++; bcRenderLower(); }, 7000);
+
+  document.addEventListener('mousemove', bcMarkActive);
+  bcMarkActive();
+
+  const el = document.documentElement;
+  if (el.requestFullscreen) el.requestFullscreen().catch(() => {});
+}
+
+function exitBroadcast() {
+  if (!BC.on) return;
+  BC.on = false;
+  document.body.classList.remove('broadcast', 'idle');
+  document.getElementById('bcToggle').checked = false;
+  clearInterval(BC.rotateTimer);
+  clearTimeout(BC.idleTimer);
+  document.removeEventListener('mousemove', bcMarkActive);
+
+  setSpin(BC.prevSpin);
+  if (!BC.prevGlobe) {
+    isGlobe = false;
+    document.getElementById('globeToggle').checked = false;
+    try { map.setProjection({ type: 'mercator' }); } catch (e) {}
+  }
+  if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen().catch(() => {});
+}
+
+document.getElementById('bcToggle').onchange = e => e.target.checked ? enterBroadcast() : exitBroadcast();
+document.getElementById('bcExit').onclick = exitBroadcast;
+
+document.addEventListener('keydown', e => {
+  if (e.target.matches('input, select, textarea')) return;
+  if (e.key === 'Escape' && BC.on) exitBroadcast();
+  else if (e.key.toLowerCase() === 'b') BC.on ? exitBroadcast() : enterBroadcast();
+  else if (e.key === 'ArrowRight' && BC.on) { BC.idx++; bcRenderLower(); }
+  else if (e.key === 'ArrowLeft' && BC.on) { BC.idx = Math.max(0, BC.idx - 1); bcRenderLower(); }
+});
+document.addEventListener('fullscreenchange', () => {
+  if (!document.fullscreenElement && BC.on) exitBroadcast();
+});
+setInterval(bcTickClock, 1000);
+
+/* ══════════════════════════════════════════════════════════
+   MAIN
+   ══════════════════════════════════════════════════════════ */
+async function loadData() {
+  await styleReady;
+  document.getElementById('status').innerText = 'Updating...';
+  dropped = 0;
+
+  const res = await Promise.allSettled([loadEarthquakes(), loadStorms(), loadWildfires(), loadFloods()]);
+  allEvents = [];
+  res.forEach(r => {
+    if (r.status === 'fulfilled') allEvents.push(...(r.value || []));
+    else console.error(r.reason);
+  });
+  if (dropped) console.warn(`⚠️ ข้ามข้อมูลพิกัดไม่ถูกต้อง ${dropped} รายการ`);
+
+  syncPulses();
+  applyMagFilter();
+  renderFeed();
+  renderTicker();
+  if (BC.on) { bcRenderStats(); bcRenderLower(); }
+
+  document.getElementById('status').innerText = 'Live';
+  document.getElementById('time').innerText = new Date().toLocaleTimeString('th-TH');
+  startCountdown();
+}
+
+/* ══════════════════════════════════════════════════════════
+   UI
+   ══════════════════════════════════════════════════════════ */
+const EQ_LAYERS = ['eq-glow', 'eq-ring', 'eq-core', 'eq-hot'];
+
+function refreshWildfireLayers() {
+  const on = document.getElementById('wfToggle').checked;
+  setVisible(['wf-heat'], on && document.getElementById('heatToggle').checked);
+  setVisible(['wf-glow', 'wf-core'], on);
+}
+function refreshStormLayers() {
+  const on = document.getElementById('stToggle').checked;
+  setVisible(['st-glow', 'st-core'], on);
+  setVisible(['st-track', 'st-track-glow'], on && document.getElementById('trackToggle').checked);
+}
+function applyMagFilter() {
+  const v = parseFloat(document.getElementById('magFilter').value);
+  document.getElementById('magValue').innerText = `M ${v.toFixed(1)}`;
+  if (map.getLayer('eq-core')) {
+    const f = ['>=', ['coalesce', ['get', 'mag'], -1], v];
+    map.setFilter('eq-core', f);
+    map.setFilter('eq-glow', f);
+    map.setFilter('eq-ring', ['all', f, ['>=', ['coalesce', ['get','mag'], 0], 4.5]]);
+    map.setFilter('eq-hot',  ['all', f, ['>=', ['coalesce', ['get','mag'], 0], 6]]);
+  }
+  syncPulses();
+}
+
+document.getElementById('eqToggle').onchange = e => { setVisible(EQ_LAYERS, e.target.checked); syncPulses(); renderFeed(); };
+document.getElementById('stToggle').onchange = () => { refreshStormLayers(); renderFeed(); };
+document.getElementById('wfToggle').onchange = () => { refreshWildfireLayers(); renderFeed(); };
+document.getElementById('flToggle').onchange = e => { setVisible(['fl-glow','fl-core'], e.target.checked); renderFeed(); };
+document.getElementById('heatToggle').onchange = refreshWildfireLayers;
+document.getElementById('trackToggle').onchange = refreshStormLayers;
+document.getElementById('labelToggle').onchange = applyLabelVisibility;
+document.getElementById('magFilter').oninput = () => { applyMagFilter(); renderFeed(); };
+document.getElementById('feedSearch').oninput = renderFeed;
+document.getElementById('feedSort').onchange = renderFeed;
+document.getElementById('themeSel').onchange = e => applyTheme(e.target.value);
+document.getElementById('spinToggle').onchange = e => setSpin(e.target.checked);
+document.getElementById('spinSpeed').oninput = e => {
+  secsPerRev = parseInt(e.target.value, 10);
+  document.getElementById('spdValue').innerText = `${secsPerRev}s/รอบ`;
+};
+document.getElementById('globeToggle').onchange = e => {
+  isGlobe = e.target.checked;
+  map.setProjection({ type: isGlobe ? 'globe' : 'mercator' });
+  updateOcclusion();
+};
+
+let countdownTimer;
+function startCountdown() {
+  clearInterval(countdownTimer);
+  let left = REFRESH_MS / 1000;
+  const el = document.getElementById('next');
+  const tick = () => {
+    el.innerText = `${String(Math.floor(left / 60)).padStart(2, '0')}:${String(left % 60).padStart(2, '0')}`;
+    if (--left < 0) clearInterval(countdownTimer);
+  };
+  tick();
+  countdownTimer = setInterval(tick, 1000);
+}
+
+loadData();
+setInterval(loadData, REFRESH_MS);
+</script>
+
+</body>
+</html>
