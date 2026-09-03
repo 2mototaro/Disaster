@@ -1,325 +1,482 @@
 <!DOCTYPE html>
-<html>
+<html lang="th">
 <head>
-  <title>Disaster Monitor Dashboard</title>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Global Disaster Monitor</title>
 
-  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
+  <meta name="theme-color" content="#0d1a2b">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 
-  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow:wght@400;600;700&display=swap" rel="stylesheet">
+  <link href="https://unpkg.com/maplibre-gl@^5.0.0/dist/maplibre-gl.css" rel="stylesheet" />
+  <script src="https://unpkg.com/maplibre-gl@^5.0.0/dist/maplibre-gl.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
   <style>
     :root {
-      --eq: #ff3b30;
-      --wf: #ff9500;
-      --fl: #30a0ff;
-      --bg: rgba(8, 12, 24, 0.92);
-      --border: rgba(255,255,255,0.08);
-    }
+      --eq: #ff2d55; --wf: #ff9500; --fl: #30a0ff; --st: #b06bff;
+      --bg: rgba(10, 16, 30, 0.9);
+      --border: rgba(255,255,255,0.1);
+      --dim: rgba(200,214,245,0.6);
+      --dim2: rgba(200,214,245,0.42);
 
+      /* ── JS อัปเดตให้ตรงกับพื้นที่มองเห็นจริงบนมือถือ ── */
+      --app-h: 100dvh;
+      --ticker-h: 34px;
+      --safe-t: env(safe-area-inset-top, 0px);
+      --safe-b: env(safe-area-inset-bottom, 0px);
+      --safe-l: env(safe-area-inset-left, 0px);
+      --safe-r: env(safe-area-inset-right, 0px);
+      --top-ui: calc(var(--safe-t) + var(--ticker-h) + 12px);
+    }
     * { box-sizing: border-box; }
-
+    html, body {
+      height: 100%;
+      overscroll-behavior: none;
+      -webkit-text-size-adjust: 100%;
+      -webkit-tap-highlight-color: transparent;
+    }
     body {
-      margin: 0;
-      font-family: 'Barlow', sans-serif;
-      background: #080c18;
-      color: #e0e8ff;
+      margin: 0; font-family: 'Barlow', sans-serif;
+      background: #1d3049; color: #e6eeff; overflow: hidden;
     }
-
     #map {
-      height: 100vh;
       width: 100%;
-      filter: saturate(0.7) brightness(0.9);
+      height: 100vh;          /* fallback */
+      height: var(--app-h);   /* ค่าจริงจาก visualViewport */
     }
 
-    /* === PANELS === */
     .ui-overlay { z-index: 1000; position: absolute; }
-
-    .panel {
-      top: 48px; left: 16px;
-      width: 220px;
-      background: var(--bg);
-      border: 1px solid var(--border);
-      border-radius: 14px;
-      padding: 16px;
-      backdrop-filter: blur(12px);
-      box-shadow: 0 8px 32px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.07);
+    .card {
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: 14px; backdrop-filter: blur(16px);
+      box-shadow: 0 10px 38px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.07);
     }
-
-    .panel h2 {
-      margin: 0 0 14px;
-      font-size: 13px;
+    h2.sec {
+      margin: 0 0 12px; font-size: 11px;
       font-family: 'Share Tech Mono', monospace;
-      letter-spacing: 2px;
-      text-transform: uppercase;
-      color: rgba(200,210,255,0.6);
+      letter-spacing: 2px; text-transform: uppercase; color: var(--dim);
     }
+    hr.sep { border: none; border-top: 1px solid var(--border); margin: 14px 0 12px; }
+
+    /* ===== CONTROL PANEL ===== */
+    .panel {
+      top: var(--top-ui); left: calc(16px + var(--safe-l));
+      width: 252px; padding: 16px;
+      max-height: calc(var(--app-h) - var(--top-ui) - 96px);
+      overflow-y: auto;
+    }
+    .panel::-webkit-scrollbar { width: 5px; }
+    .panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,.14); border-radius: 3px; }
+
+    .sheet-handle { display: none; }
 
     .toggle {
-      display: flex;
-      align-items: center;
-      margin: 10px 0;
-      cursor: pointer;
-      gap: 10px;
-      font-size: 14px;
-      font-weight: 600;
+      display: flex; align-items: center; margin: 8px 0;
+      cursor: pointer; gap: 10px; font-size: 13.5px; font-weight: 600;
     }
-
-    /* custom checkbox */
     .toggle input { display: none; }
     .toggle .dot {
-      width: 36px; height: 20px;
-      background: rgba(255,255,255,0.1);
-      border-radius: 10px;
-      position: relative;
-      transition: background 0.3s;
-      flex-shrink: 0;
-      border: 1px solid rgba(255,255,255,0.15);
+      width: 34px; height: 19px; background: rgba(255,255,255,0.12);
+      border-radius: 10px; position: relative; transition: background .25s;
+      flex-shrink: 0; border: 1px solid rgba(255,255,255,0.16);
     }
     .toggle .dot::after {
-      content: '';
-      position: absolute;
-      width: 14px; height: 14px;
-      border-radius: 50%;
-      top: 2px; left: 2px;
-      background: white;
-      transition: transform 0.3s;
+      content: ''; position: absolute; width: 13px; height: 13px;
+      border-radius: 50%; top: 2px; left: 2px; background: #fff; transition: transform .25s;
     }
     .toggle input:checked + .dot { background: var(--accent); }
-    .toggle input:checked + .dot::after { transform: translateX(16px); }
-
+    .toggle input:checked + .dot::after { transform: translateX(15px); }
     .toggle-eq .dot { --accent: var(--eq); }
     .toggle-wf .dot { --accent: var(--wf); }
     .toggle-fl .dot { --accent: var(--fl); }
+    .toggle-st .dot { --accent: var(--st); }
+    .toggle-x  .dot { --accent: #2fe6a0; }
+    .toggle-bc .dot { --accent: #ff3860; }
 
-    .toggle-label { display: flex; align-items: center; gap: 7px; }
-    .toggle-badge {
-      width: 10px; height: 10px;
-      border-radius: 50%;
-      display: inline-block;
-      flex-shrink: 0;
+    .toggle-label { display: flex; align-items: center; gap: 7px; flex: 1; }
+    .kbd {
+      font-family: 'Share Tech Mono', monospace; font-size: 9.5px;
+      border: 1px solid var(--border); border-radius: 4px;
+      padding: 0 4px; color: var(--dim2);
+    }
+    .badge9 { width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+    .count {
+      font-family: 'Share Tech Mono', monospace; font-size: 11.5px; color: var(--dim);
+      background: rgba(255,255,255,0.06); padding: 1px 7px;
+      border-radius: 6px; min-width: 36px; text-align: center;
     }
 
-    /* TOP BAR */
-    .topbar {
-      top: 48px; right: 16px;
-      background: var(--bg);
-      border: 1px solid var(--border);
-      padding: 10px 16px;
-      border-radius: 12px;
-      font-size: 12px;
-      font-family: 'Share Tech Mono', monospace;
-      color: rgba(200,210,255,0.7);
-      backdrop-filter: blur(12px);
-      text-align: right;
-      line-height: 1.8;
+    .filter-head {
+      display: flex; justify-content: space-between; align-items: baseline;
+      font-size: 10.5px; font-family: 'Share Tech Mono', monospace;
+      color: var(--dim); letter-spacing: 1px; margin-bottom: 8px;
     }
+    .filter-head b { color: var(--eq); font-size: 13px; }
+    input[type=range] {
+      -webkit-appearance: none; appearance: none; width: 100%; height: 4px;
+      border-radius: 2px; background: rgba(255,255,255,0.14); outline: none;
+    }
+    input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%;
+      background: var(--eq); cursor: pointer;
+      box-shadow: 0 0 9px rgba(255,45,85,.75); border: 2px solid #0d1220;
+    }
+    input[type=range]::-moz-range-thumb {
+      width: 12px; height: 12px; border-radius: 50%;
+      background: var(--eq); cursor: pointer; border: 2px solid #0d1220;
+    }
+    input[type=range].spd::-webkit-slider-thumb { background: #2fe6a0; box-shadow: 0 0 9px rgba(47,230,160,.7); }
+    input[type=range].spd::-moz-range-thumb { background: #2fe6a0; }
 
-    /* LEGEND */
+    .sel {
+      width: 100%; background: rgba(255,255,255,0.07);
+      border: 1px solid var(--border); border-radius: 9px;
+      color: #e6eeff; font-size: 12.5px; padding: 7px 9px;
+      outline: none; cursor: pointer; font-family: 'Barlow', sans-serif;
+    }
+    .sel option { background: #101a2c; }
+
+    /* ===== EVENT FEED ===== */
+    .feed {
+      top: var(--top-ui); right: calc(16px + var(--safe-r)); width: 320px;
+      max-height: calc(var(--app-h) - var(--top-ui) - 96px);
+      display: flex; flex-direction: column; overflow: hidden;
+    }
+    .feed-head { padding: 14px 15px 11px; border-bottom: 1px solid var(--border); }
+    .feed-head .row {
+      display: flex; justify-content: space-between; align-items: center;
+      font-family: 'Share Tech Mono', monospace; font-size: 10.5px;
+      color: var(--dim); letter-spacing: 1px;
+    }
+    .feed-head .row + .row { margin-top: 5px; }
+    .feed-head .hl { color: #e6eeff; }
+
+    .feed-tabs { display: flex; gap: 5px; margin-top: 11px; }
+    .tab {
+      flex: 1; text-align: center; cursor: pointer; user-select: none;
+      padding: 6px 2px 5px; border-radius: 8px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid transparent;
+      transition: background .15s, border-color .15s;
+    }
+    .tab:hover { background: rgba(255,255,255,0.09); }
+    .tab.on { background: rgba(255,255,255,0.11); border-color: var(--tc); }
+    .tab .ic { font-size: 12px; line-height: 1; }
+    .tab .n {
+      display: block; font-family: 'Share Tech Mono', monospace;
+      font-size: 10.5px; margin-top: 3px; color: var(--dim2);
+    }
+    .tab.on .n { color: var(--tc); font-weight: 700; }
+
+    .feed-tools { display: flex; gap: 7px; margin-top: 9px; }
+    .feed-search {
+      flex: 1; background: rgba(255,255,255,0.07); border: 1px solid var(--border);
+      border-radius: 8px; padding: 6px 10px; color: #e6eeff;
+      font-family: 'Barlow', sans-serif; font-size: 12.5px; outline: none; min-width: 0;
+    }
+    .feed-search::placeholder { color: var(--dim2); }
+    .feed-search:focus { border-color: rgba(255,255,255,0.26); }
+    .feed-sort {
+      background: rgba(255,255,255,0.07); border: 1px solid var(--border);
+      border-radius: 8px; color: var(--dim); font-size: 11.5px;
+      padding: 6px; outline: none; cursor: pointer; font-family: 'Barlow', sans-serif;
+    }
+    .feed-sort option { background: #101a2c; }
+
+    .feed-list { overflow-y: auto; padding: 6px; flex: 1; }
+    .feed-list::-webkit-scrollbar { width: 6px; }
+    .feed-list::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.14); border-radius: 3px; }
+    .feed-item {
+      display: flex; align-items: stretch; gap: 10px; padding: 9px 10px;
+      border-radius: 9px; cursor: pointer; transition: background .15s;
+      border: 1px solid transparent;
+    }
+    .feed-item:hover { background: rgba(255,255,255,0.07); border-color: var(--border); }
+    .feed-item.active { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.2); }
+    .feed-bar { width: 3px; border-radius: 2px; flex-shrink: 0; }
+    .feed-body { flex: 1; min-width: 0; }
+    .feed-title {
+      font-size: 12.8px; font-weight: 600; line-height: 1.35;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .feed-meta {
+      font-size: 10.5px; color: var(--dim2); font-family: 'Share Tech Mono', monospace;
+      margin-top: 3px; display: flex; gap: 6px; align-items: center;
+    }
+    .feed-tag { padding: 0 5px; border-radius: 4px; font-size: 9.5px; border: 1px solid currentColor; opacity: .88; }
+    .feed-val { font-family: 'Share Tech Mono', monospace; font-size: 13px; font-weight: 700; align-self: center; flex-shrink: 0; }
+    .feed-empty { padding: 26px 14px; text-align: center; color: var(--dim2); font-size: 12.5px; }
+
+    /* ===== LEGEND ===== */
     .legend {
-      bottom: 20px; left: 16px;
-      background: var(--bg);
-      border: 1px solid var(--border);
-      padding: 12px 16px;
-      border-radius: 12px;
-      font-size: 12px;
-      backdrop-filter: blur(12px);
-      line-height: 2;
+      bottom: calc(18px + var(--safe-b)); left: calc(16px + var(--safe-l));
+      padding: 13px 16px; width: 252px; font-size: 12px;
     }
+    .lg-row { display: flex; align-items: center; gap: 9px; margin: 6px 0; }
+    .lg-src { font-family: 'Share Tech Mono', monospace; font-size: 9.5px; color: var(--dim2); margin-left: auto; }
+    .lg-block { margin-top: 11px; padding-top: 10px; border-top: 1px solid var(--border); }
+    .lg-ramp { display: flex; height: 9px; border-radius: 3px; overflow: hidden; }
+    .lg-ramp i { flex: 1; }
+    .lg-ticks {
+      display: flex; justify-content: space-between; margin-top: 4px;
+      font-family: 'Share Tech Mono', monospace; font-size: 9px; color: var(--dim2);
+    }
+    .lg-scale { display: flex; align-items: flex-end; gap: 9px; margin-top: 10px; }
+    .lg-scale div { text-align: center; }
+    .lg-scale span { display: block; font-size: 9px; color: var(--dim2); margin-top: 3px; font-family: 'Share Tech Mono', monospace; }
+    .lg-dot { border-radius: 50%; display: inline-block; border: 1px solid rgba(255,255,255,.55); }
+    .lg-note { font-size: 10px; color: var(--dim2); margin-top: 7px; line-height: 1.5; }
 
-    .legend-row { display: flex; align-items: center; gap: 10px; }
-    .legend-sizes {
-      display: flex; align-items: center; gap: 4px;
-      margin-left: 4px;
-    }
-    .legend-dot {
-      border-radius: 50%;
-      display: inline-block;
-      border: 1.5px solid rgba(255,255,255,0.4);
-    }
-
-    .legend-summary {
-      cursor: pointer;
-      list-style: none;
-      font-family: 'Share Tech Mono', monospace;
-      font-size: 11px;
-      letter-spacing: 1.5px;
-      text-transform: uppercase;
-      color: rgba(200,210,255,0.6);
-      user-select: none;
-    }
-    .legend-summary::-webkit-details-marker { display: none; }
-    .legend-summary::after { content: '▾'; float: right; margin-left: 8px; }
-    .legend[open] .legend-summary::after { content: '▴'; }
-    .legend-body { margin-top: 8px; }
-
-    /* STATUS */
+    /* ===== STATUS ===== */
     .status {
-      bottom: 20px; right: 16px;
-      background: var(--bg);
-      border: 1px solid var(--border);
-      padding: 8px 14px;
-      border-radius: 10px;
-      font-size: 12px;
+      bottom: calc(18px + var(--safe-b)); right: calc(16px + var(--safe-r));
+      padding: 8px 14px; font-size: 11.5px;
       font-family: 'Share Tech Mono', monospace;
-      backdrop-filter: blur(12px);
+      display: flex; align-items: center; gap: 8px; border-radius: 10px;
     }
-
-    #status {
-      color: #30ff90;
-      font-weight: bold;
+    #status { color: #2fe6a0; font-weight: bold; }
+    .live-dot {
+      width: 7px; height: 7px; border-radius: 50%; background: #2fe6a0;
+      box-shadow: 0 0 9px #2fe6a0; animation: blink 2s ease-in-out infinite;
     }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.25} }
 
-    .spinner {
-      display: none;
-      width: 9px; height: 9px;
-      border: 2px solid rgba(255,255,255,0.25);
-      border-top-color: #30ff90;
-      border-radius: 50%;
-      margin-left: 6px;
-      vertical-align: middle;
-      animation: spin 0.7s linear infinite;
+    /* ===== TICKER ===== */
+    .breaking {
+      top: 0; width: 100%; background: linear-gradient(90deg,#8b0000,#d10000);
+      color: #fff; display: flex; align-items: center; font-weight: 700;
+      font-size: 13px; z-index: 2000; border-bottom: 1px solid rgba(255,110,110,.45);
+      transition: font-size .3s;
+      padding-top: var(--safe-t);
+      padding-left: var(--safe-l); padding-right: var(--safe-r);
     }
-    @keyframes spin { to { transform: rotate(360deg); } }
-
-    /* BREAKING NEWS */
-    .breaking-news {
-      top: 0; width: 100%;
-      background: linear-gradient(90deg, #8b0000, #cc0000);
-      color: white;
-      display: flex;
-      align-items: center;
-      font-weight: 700;
-      font-size: 13px;
-      z-index: 2000;
-      letter-spacing: 0.3px;
-      border-bottom: 1px solid rgba(255,100,100,0.4);
+    .breaking .label {
+      padding: 7px 14px; background: rgba(0,0,0,.36);
+      font-family: 'Share Tech Mono', monospace; font-size: 11px;
+      letter-spacing: 2px; white-space: nowrap; border-right: 1px solid rgba(255,110,110,.3);
+      transition: font-size .3s, padding .3s;
     }
-
-    .label {
-      padding: 7px 14px;
-      background: rgba(0,0,0,0.35);
-      font-family: 'Share Tech Mono', monospace;
-      font-size: 11px;
-      letter-spacing: 2px;
-      white-space: nowrap;
-      border-right: 1px solid rgba(255,100,100,0.3);
-    }
-
     .ticker { white-space: nowrap; overflow: hidden; flex: 1; }
-    .ticker span {
-      display: inline-block;
-      padding: 7px 0 7px 100%;
-      animation: ticker 25s linear infinite;
-    }
-    .ticker:hover span {
-      animation-play-state: paused;
-    }
+    .ticker span { display: inline-block; padding: 7px 0 7px 100%; animation: tick 30s linear infinite; }
+    .ticker:hover span { animation-play-state: paused; }
+    @keyframes tick { 0%{transform:translateX(0)} 100%{transform:translateX(-100%)} }
 
-    @keyframes ticker {
-      0%   { transform: translateX(0); }
-      100% { transform: translateX(-100%); }
-    }
-
-    /* === PULSE ANIMATION for large earthquakes === */
-    @keyframes pulse-ring {
-      0%   { transform: scale(1);   opacity: 0.7; }
-      100% { transform: scale(2.8); opacity: 0; }
-    }
-
+    /* ===== PULSE ===== */
+    @keyframes pulse-ring { 0%{transform:scale(.5);opacity:.9} 100%{transform:scale(2.8);opacity:0} }
+    .pulse-marker { pointer-events: none; width: 0; height: 0; position: relative; }
     .pulse-ring {
-      position: absolute;
-      border-radius: 50%;
-      animation: pulse-ring 1.8s ease-out infinite;
-      pointer-events: none;
+      position: absolute; border-radius: 50%;
+      border: 2px solid currentColor;
+      animation: pulse-ring 2.6s cubic-bezier(.2,.6,.3,1) infinite;
+    }
+    .pulse-ring:nth-child(2) { animation-delay: 1.3s; }
+
+    /* ===== POPUP ===== */
+    .maplibregl-popup-content {
+      background: rgba(12,20,36,.97) !important; color: #e2ecff !important;
+      border: 1px solid rgba(255,255,255,.14) !important; border-radius: 12px !important;
+      box-shadow: 0 10px 38px rgba(0,0,0,.7) !important;
+      font-family: 'Barlow', sans-serif !important; padding: 13px 15px !important;
+    }
+    .maplibregl-popup-anchor-bottom .maplibregl-popup-tip { border-top-color: rgba(12,20,36,.97) !important; }
+    .maplibregl-popup-anchor-top .maplibregl-popup-tip { border-bottom-color: rgba(12,20,36,.97) !important; }
+    .maplibregl-popup-anchor-left .maplibregl-popup-tip { border-right-color: rgba(12,20,36,.97) !important; }
+    .maplibregl-popup-anchor-right .maplibregl-popup-tip { border-left-color: rgba(12,20,36,.97) !important; }
+    .maplibregl-popup-close-button { color: rgba(255,255,255,.5) !important; font-size: 17px !important; padding: 3px 8px !important; }
+    .pop-title { font-size: 14px; font-weight: 700; margin-bottom: 6px; }
+    .pop-row { font-size: 12.5px; line-height: 1.75; color: rgba(226,236,255,.86); }
+    .pop-sep { border: none; border-top: 1px solid rgba(255,255,255,.11); margin: 7px 0; }
+    .pop-link { font-size: 11.5px; text-decoration: none; font-weight: 600; }
+    .pop-meta { font-family: 'Share Tech Mono', monospace; font-size: 11px; color: var(--dim2); }
+    .pop-chip {
+      display: inline-block; padding: 1px 8px; border-radius: 6px; font-size: 11px;
+      font-weight: 700; font-family: 'Share Tech Mono', monospace; border: 1px solid currentColor;
     }
 
-    /* Leaflet popup styling */
-    .leaflet-popup-content-wrapper {
-      background: rgba(10, 14, 28, 0.96) !important;
-      color: #dde8ff !important;
-      border: 1px solid rgba(255,255,255,0.1) !important;
-      border-radius: 10px !important;
-      box-shadow: 0 4px 24px rgba(0,0,0,0.6) !important;
-      font-family: 'Barlow', sans-serif !important;
+    .maplibregl-ctrl-group { background: var(--bg) !important; border: 1px solid var(--border) !important; }
+    .maplibregl-ctrl-group button { filter: invert(.9); }
+    .maplibregl-ctrl-attrib { background: rgba(10,16,30,.72) !important; }
+    .maplibregl-ctrl-attrib a { color: rgba(200,214,245,.62) !important; }
+    .maplibregl-ctrl-bottom-right { margin-bottom: calc(54px + var(--safe-b)); }
+
+    /* ══════════════════════════════════════════
+       BROADCAST MODE
+       ══════════════════════════════════════════ */
+    .bc-only { display: none !important; }
+
+    body.broadcast .panel,
+    body.broadcast .feed,
+    body.broadcast .legend,
+    body.broadcast .status,
+    body.broadcast .maplibregl-ctrl-top-right,
+    body.broadcast .maplibregl-ctrl-bottom-right,
+    body.broadcast .maplibregl-popup { display: none !important; }
+
+    body.broadcast .bc-only { display: flex !important; }
+    body.broadcast .breaking { font-size: 16px; }
+    body.broadcast .breaking .label { font-size: 13px; padding: 10px 18px; }
+    body.broadcast .ticker span { padding-top: 10px; padding-bottom: 10px; }
+    body.broadcast.idle { cursor: none; }
+    body.broadcast.idle .bc-exit { opacity: 0; pointer-events: none; }
+
+    .bc-vignette {
+      position: absolute; inset: 0; z-index: 900; pointer-events: none;
+      background: radial-gradient(ellipse at center, rgba(0,0,0,0) 45%, rgba(0,0,0,0.55) 100%);
     }
-    .leaflet-popup-tip { background: rgba(10,14,28,0.96) !important; }
-    .leaflet-popup-close-button { color: rgba(255,255,255,0.5) !important; }
 
-    .status-time-mobile { display: none; }
+    .bc-stats {
+      top: calc(var(--top-ui) + 12px); right: calc(22px + var(--safe-r));
+      gap: 8px; flex-direction: column; align-items: flex-end;
+    }
+    .bc-stat {
+      display: flex; align-items: center; gap: 9px;
+      background: rgba(8,14,26,0.72); backdrop-filter: blur(12px);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-left: 3px solid var(--c);
+      border-radius: 8px; padding: 6px 13px 6px 11px; min-width: 168px;
+    }
+    .bc-stat .lbl {
+      font-family: 'Share Tech Mono', monospace; font-size: 10.5px;
+      letter-spacing: 1.5px; color: rgba(220,232,255,0.72); flex: 1;
+    }
+    .bc-stat .val {
+      font-family: 'Share Tech Mono', monospace; font-size: 17px;
+      font-weight: 700; color: var(--c); line-height: 1;
+    }
 
-    /* === MOBILE === */
-    @media (max-width: 640px) {
-      body { overscroll-behavior: none; }
+    .bc-lower {
+      bottom: calc(30px + var(--safe-b)); left: calc(30px + var(--safe-l)); max-width: 62vw;
+      align-items: stretch; gap: 0;
+      animation: bcIn .55s cubic-bezier(.2,.8,.3,1);
+    }
+    @keyframes bcIn { from { opacity: 0; transform: translateX(-26px); } to { opacity: 1; transform: none; } }
+    .bc-accent { width: 7px; border-radius: 4px 0 0 4px; background: var(--c); box-shadow: 0 0 22px var(--c); }
+    .bc-body {
+      background: rgba(8,14,26,0.86); backdrop-filter: blur(16px);
+      border: 1px solid rgba(255,255,255,0.11); border-left: none;
+      border-radius: 0 12px 12px 0; padding: 12px 22px 13px 18px;
+      min-width: 0;
+    }
+    .bc-kicker {
+      font-family: 'Share Tech Mono', monospace; font-size: 11px;
+      letter-spacing: 2.4px; color: var(--c); text-transform: uppercase;
+      display: flex; align-items: center; gap: 9px;
+    }
+    .bc-kicker .sub { color: rgba(200,214,245,0.5); letter-spacing: 1.2px; }
+    .bc-title {
+      font-size: 26px; font-weight: 800; line-height: 1.2; margin-top: 5px;
+      letter-spacing: -0.2px; text-shadow: 0 2px 14px rgba(0,0,0,.6);
+    }
+    .bc-sub {
+      font-size: 13.5px; color: rgba(214,228,255,0.72); margin-top: 5px;
+      font-family: 'Share Tech Mono', monospace;
+    }
 
-      .breaking-news { font-size: 11px; }
-      .breaking-news .label { padding: 6px 10px; font-size: 9px; }
-      .ticker span { padding: 6px 0 6px 100%; }
+    .bc-clock {
+      bottom: calc(30px + var(--safe-b)); right: calc(30px + var(--safe-r));
+      flex-direction: column; align-items: flex-end;
+      background: rgba(8,14,26,0.78); backdrop-filter: blur(14px);
+      border: 1px solid rgba(255,255,255,0.11); border-radius: 12px;
+      padding: 10px 18px; font-family: 'Share Tech Mono', monospace;
+    }
+    .bc-clock .t { font-size: 25px; font-weight: 700; line-height: 1; letter-spacing: 1px; }
+    .bc-clock .z { font-size: 10.5px; color: rgba(200,214,245,0.55); margin-top: 5px; letter-spacing: 1.6px; }
 
-      /* Layer toggle panel → compact row right under the ticker, full width */
+    .bc-exit {
+      top: calc(var(--top-ui) + 6px); left: calc(22px + var(--safe-l));
+      align-items: center; gap: 8px; cursor: pointer;
+      background: rgba(8,14,26,0.8); backdrop-filter: blur(12px);
+      border: 1px solid rgba(255,255,255,0.14); border-radius: 9px;
+      padding: 7px 14px; font-size: 12px; font-weight: 600;
+      transition: opacity .35s, background .15s; z-index: 1500;
+    }
+    .bc-exit:hover { background: rgba(30,44,70,0.9); }
+
+    /* ══════════════════════════════════════════
+       RESPONSIVE
+       ══════════════════════════════════════════ */
+    @media (max-width: 1100px) { .feed { display: none; } }
+
+    @media (max-width: 760px) {
+      /* ── แผงควบคุม → bottom sheet ── */
       .panel {
-        top: calc(38px + env(safe-area-inset-top, 0px));
-        left: 8px; right: 8px; width: auto;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 10px 12px;
-        gap: 4px;
+        top: auto; bottom: 0; left: 0; right: 0; width: 100%;
+        max-height: calc(var(--app-h) * 0.66);
+        border-radius: 18px 18px 0 0;
+        padding: 0 16px calc(18px + var(--safe-b));
+        transform: translateY(calc(100% - 54px - var(--safe-b)));
+        transition: transform .32s cubic-bezier(.2,.8,.3,1);
+        overscroll-behavior: contain;
       }
-      .panel h2 { display: none; }
-      .toggle {
-        flex-direction: column;
-        align-items: center;
-        gap: 5px;
-        margin: 0;
-        font-size: 10px;
-        touch-action: manipulation;
+      .panel.open { transform: none; }
+
+      .sheet-handle {
+        display: flex !important; align-items: center; gap: 10px;
+        height: 54px; margin: 0 -16px; padding: 0 16px;
+        position: sticky; top: 0; z-index: 5; cursor: pointer;
+        background: linear-gradient(180deg, rgba(12,19,34,.98) 70%, rgba(12,19,34,0));
       }
-      .toggle .dot { width: 34px; height: 20px; }
-      .toggle-label { flex-direction: column; gap: 3px; }
-
-      /* Realtime label box hidden — time shown inline in the status pill instead */
-      .topbar { display: none; }
-      .status-time-mobile { display: inline; }
-
-      /* Legend → compact, drop the magnitude scale demo dots to save width */
-      .legend {
-        left: 8px; bottom: calc(8px + env(safe-area-inset-bottom, 0px));
-        padding: 8px 10px;
-        font-size: 10px;
-        line-height: 1.6;
-        max-width: 46%;
+      .sheet-handle .grip {
+        position: absolute; top: 7px; left: 50%; transform: translateX(-50%);
+        width: 38px; height: 4px; border-radius: 2px; background: rgba(255,255,255,.22);
       }
-      .legend-sizes { display: none; }
-      .legend-scale-note { display: none; }
+      .sheet-handle .ttl { font-size: 13px; font-weight: 700; flex: 1; }
+      .sheet-handle .chev { color: var(--dim); transition: transform .32s; font-size: 11px; }
+      .panel.open .sheet-handle .chev { transform: rotate(180deg); }
 
+      .legend { display: none; }
       .status {
-        right: 8px; bottom: calc(8px + env(safe-area-inset-bottom, 0px));
-        padding: 6px 10px;
-        font-size: 10px;
+        bottom: calc(66px + var(--safe-b));
+        right: calc(12px + var(--safe-r));
+        padding: 6px 11px; font-size: 10.5px;
       }
+      .maplibregl-ctrl-bottom-right { margin-bottom: calc(112px + var(--safe-b)); }
+      .maplibregl-ctrl-attrib.maplibregl-compact { margin-bottom: 4px; }
 
-      .leaflet-control-zoom {
-        margin-right: 8px !important;
-        margin-bottom: 90px !important;
+      .toggle { margin: 11px 0; }
+      .toggle .dot { width: 40px; height: 23px; }
+      .toggle .dot::after { width: 17px; height: 17px; }
+      .toggle input:checked + .dot::after { transform: translateX(17px); }
+      .sel, input[type=range] { font-size: 16px; }
+
+      .breaking { font-size: 12px; }
+      .breaking .label { padding: 6px 10px; font-size: 10px; letter-spacing: 1.2px; }
+      .ticker span { animation-duration: 22s; }
+
+      /* ── Broadcast บนมือถือ ── */
+      body.broadcast .bc-stats {
+        top: auto; bottom: calc(12px + var(--safe-b));
+        left: calc(10px + var(--safe-l)); right: calc(10px + var(--safe-r));
+        flex-direction: row; gap: 6px; align-items: stretch;
       }
+      body.broadcast .bc-stat {
+        min-width: 0; flex: 1; padding: 5px 6px;
+        flex-direction: column; align-items: flex-start; gap: 2px;
+      }
+      body.broadcast .bc-stat .lbl { font-size: 8px; letter-spacing: .8px; }
+      body.broadcast .bc-stat .val { font-size: 14px; }
+
+      body.broadcast .bc-lower {
+        left: calc(10px + var(--safe-l)); right: calc(10px + var(--safe-r));
+        bottom: calc(74px + var(--safe-b)); max-width: none;
+      }
+      body.broadcast .bc-title { font-size: 18px; }
+      body.broadcast .bc-sub { font-size: 11px; }
+      body.broadcast .bc-kicker { font-size: 9.5px; letter-spacing: 1.6px; }
+      body.broadcast .bc-clock { display: none !important; }
+      body.broadcast .bc-exit {
+        top: calc(var(--safe-t) + var(--ticker-h) + 10px);
+        left: calc(10px + var(--safe-l)); font-size: 11px; padding: 6px 11px;
+      }
+      body.broadcast .bc-vignette { display: none !important; }
     }
 
-    /* === MOBILE LANDSCAPE — จอกว้างพอแต่สูงจำกัด ต้องประหยัดพื้นที่แนวตั้ง === */
-    @media (max-width: 900px) and (orientation: landscape) {
-      .breaking-news .label { padding: 4px 8px; }
-      .ticker span { padding: 4px 0 4px 100%; }
-
-      .panel { top: 30px; padding: 6px 10px; }
-      .toggle { font-size: 9px; }
-      .toggle .dot { width: 30px; height: 18px; }
-
-      .legend { padding: 6px 10px; font-size: 9px; line-height: 1.4; max-width: 40%; }
-      .legend-summary { font-size: 9px; }
-
-      .status { padding: 4px 8px; font-size: 9px; }
-
-      .leaflet-control-zoom { margin-bottom: 8px !important; }
+    @media (max-width: 760px) and (orientation: landscape) {
+      .panel { max-height: calc(var(--app-h) * 0.82); }
+      body.broadcast .bc-title { font-size: 16px; }
     }
   </style>
 </head>
@@ -328,682 +485,167 @@
 
 <div id="map"></div>
 
-<!-- PANEL -->
-<div class="panel ui-overlay">
-  <h2>⬡ Disaster Layers</h2>
+<div class="bc-vignette bc-only ui-overlay"></div>
+
+<!-- ══ CONTROL PANEL ══ -->
+<div class="panel card ui-overlay" id="panel">
+  <div class="sheet-handle" id="sheetHandle">
+    <span class="grip"></span>
+    <span class="ttl">⬡ ตัวควบคุม &amp; ตัวกรอง</span>
+    <span class="chev">▲</span>
+  </div>
+
+  <h2 class="sec">⬡ Disaster Layers</h2>
 
   <label class="toggle toggle-eq">
-    <input type="checkbox" checked id="eqToggle">
-    <span class="dot"></span>
-    <span class="toggle-label">
-      <span class="toggle-badge" style="background:var(--eq); box-shadow:0 0 6px var(--eq);"></span>
-      Earthquake
-    </span>
+    <input type="checkbox" checked id="eqToggle"><span class="dot"></span>
+    <span class="toggle-label"><span class="badge9" style="background:var(--eq);box-shadow:0 0 7px var(--eq);"></span>Earthquake</span>
+    <span class="count" id="eqCount">—</span>
+  </label>
+
+  <label class="toggle toggle-st">
+    <input type="checkbox" checked id="stToggle"><span class="dot"></span>
+    <span class="toggle-label"><span class="badge9" style="background:var(--st);box-shadow:0 0 7px var(--st);"></span>Severe Storm</span>
+    <span class="count" id="stCount">—</span>
   </label>
 
   <label class="toggle toggle-wf">
-    <input type="checkbox" checked id="wfToggle">
-    <span class="dot"></span>
-    <span class="toggle-label">
-      <span class="toggle-badge" style="background:var(--wf); box-shadow:0 0 6px var(--wf);"></span>
-      Wildfire
-    </span>
+    <input type="checkbox" checked id="wfToggle"><span class="dot"></span>
+    <span class="toggle-label"><span class="badge9" style="background:var(--wf);box-shadow:0 0 7px var(--wf);"></span>Wildfire</span>
+    <span class="count" id="wfCount">—</span>
   </label>
 
   <label class="toggle toggle-fl">
-    <input type="checkbox" checked id="flToggle">
-    <span class="dot"></span>
-    <span class="toggle-label">
-      <span class="toggle-badge" style="background:var(--fl); box-shadow:0 0 6px var(--fl);"></span>
-      Flood
-    </span>
+    <input type="checkbox" checked id="flToggle"><span class="dot"></span>
+    <span class="toggle-label"><span class="badge9" style="background:var(--fl);box-shadow:0 0 7px var(--fl);"></span>Flood</span>
+    <span class="count" id="flCount">—</span>
+  </label>
+
+  <hr class="sep">
+  <div class="filter-head"><span>MIN MAGNITUDE</span><b id="magValue">M 0.0</b></div>
+  <input type="range" id="magFilter" min="0" max="7" step="0.5" value="0">
+
+  <hr class="sep">
+  <h2 class="sec">🗺 Basemap</h2>
+  <select class="sel" id="themeSel">
+    <option value="news">Newsroom — สว่าง อ่านง่าย</option>
+    <option value="midnight">Midnight — เข้ม เน้นข้อมูล</option>
+    <option value="graphite">Graphite — เทากลาง</option>
+    <option value="satellite">Satellite — ภาพถ่ายดาวเทียม</option>
+  </select>
+
+  <hr class="sep">
+  <label class="toggle toggle-x">
+    <input type="checkbox" checked id="globeToggle"><span class="dot"></span>
+    <span class="toggle-label">🌐 Globe View</span>
+  </label>
+  <label class="toggle toggle-x">
+    <input type="checkbox" checked id="heatToggle"><span class="dot"></span>
+    <span class="toggle-label">🔥 Wildfire Heatmap</span>
+  </label>
+  <label class="toggle toggle-x">
+    <input type="checkbox" checked id="trackToggle"><span class="dot"></span>
+    <span class="toggle-label">🌀 Storm Tracks</span>
+  </label>
+  <label class="toggle toggle-x">
+    <input type="checkbox" checked id="labelToggle"><span class="dot"></span>
+    <span class="toggle-label">🏷 ชื่อสถานที่</span>
+  </label>
+  <label class="toggle toggle-x">
+    <input type="checkbox" id="spinToggle"><span class="dot"></span>
+    <span class="toggle-label">🔄 หมุนลูกโลกอัตโนมัติ</span>
+  </label>
+
+  <div class="filter-head" style="margin-top:10px;"><span>SPIN SPEED</span><b id="spdValue" style="color:#2fe6a0;">120s/รอบ</b></div>
+  <input type="range" class="spd" id="spinSpeed" min="40" max="300" step="10" value="120">
+
+  <hr class="sep">
+  <label class="toggle toggle-bc">
+    <input type="checkbox" id="bcToggle"><span class="dot"></span>
+    <span class="toggle-label">📺 Broadcast Mode <span class="kbd">B</span></span>
   </label>
 </div>
 
-<!-- TOP BAR -->
-<div class="topbar ui-overlay">
-  🔄 Realtime Monitoring<br>
-  Updated: <span id="time"></span>
-</div>
+<!-- ══ EVENT FEED ══ -->
+<div class="feed card ui-overlay">
+  <div class="feed-head">
+    <div class="row"><span>◈ LIVE EVENT FEED</span><span class="hl" id="feedCount">0</span></div>
+    <div class="row"><span>UPDATED</span><span class="hl" id="time">—</span></div>
+    <div class="row"><span>NEXT SYNC</span><span class="hl" id="next">—</span></div>
 
-<!-- LEGEND -->
-<details class="legend ui-overlay" open>
-  <summary class="legend-summary">Legend</summary>
-  <div class="legend-body">
-    <div class="legend-row">
-      <span class="toggle-badge" style="background:var(--eq); box-shadow:0 0 5px var(--eq); width:10px;height:10px;border-radius:50%;display:inline-block;"></span>
-      Earthquake
-      <span class="legend-sizes">
-        <span class="legend-dot" style="width:8px;height:8px;background:var(--eq);opacity:.6;"></span>
-        <span class="legend-dot" style="width:14px;height:14px;background:var(--eq);opacity:.8;"></span>
-        <span class="legend-dot" style="width:22px;height:22px;background:var(--eq);"></span>
-      </span>
-      <span class="legend-scale-note" style="font-size:10px;color:rgba(200,210,255,0.5);">M1 → M7+</span>
+    <div class="feed-tabs" id="feedTabs">
+      <div class="tab on" data-t="all" style="--tc:#e6eeff;"><span class="ic">◈</span><span class="n" id="tabAll">0</span></div>
+      <div class="tab" data-t="eq" style="--tc:var(--eq);"><span class="ic">🌍</span><span class="n" id="tabEq">0</span></div>
+      <div class="tab" data-t="st" style="--tc:var(--st);"><span class="ic">🌀</span><span class="n" id="tabSt">0</span></div>
+      <div class="tab" data-t="wf" style="--tc:var(--wf);"><span class="ic">🔥</span><span class="n" id="tabWf">0</span></div>
+      <div class="tab" data-t="fl" style="--tc:var(--fl);"><span class="ic">🌊</span><span class="n" id="tabFl">0</span></div>
     </div>
-    <div class="legend-row">
-      <span style="width:10px;height:10px;border-radius:50%;background:var(--wf);box-shadow:0 0 5px var(--wf);display:inline-block;"></span>
-      Wildfire
-    </div>
-    <div class="legend-row">
-      <span style="width:10px;height:10px;border-radius:50%;background:var(--fl);box-shadow:0 0 5px var(--fl);display:inline-block;"></span>
-      Flood
+
+    <div class="feed-tools">
+      <input class="feed-search" id="feedSearch" placeholder="ค้นหาสถานที่ / เหตุการณ์…">
+      <select class="feed-sort" id="feedSort">
+        <option value="severity">รุนแรงสุด</option>
+        <option value="time">ล่าสุด</option>
+      </select>
     </div>
   </div>
-</details>
-
-<!-- STATUS -->
-<div class="status ui-overlay">
-  Status: <span id="status">Loading...</span><span id="spinner" class="spinner"></span>
-  <span class="status-time-mobile"> · <span id="time-mobile"></span></span>
+  <div class="feed-list" id="feedList"></div>
 </div>
-<div class="breaking-news ui-overlay">
+
+<!-- ══ LEGEND ══ -->
+<div class="legend card ui-overlay">
+  <h2 class="sec">Legend</h2>
+  <div class="lg-row"><span class="badge9" style="background:var(--eq);box-shadow:0 0 7px var(--eq);"></span>Earthquake<span class="lg-src">USGS · 24h</span></div>
+  <div class="lg-row"><span class="badge9" style="background:var(--st);box-shadow:0 0 7px var(--st);"></span>Severe Storm<span class="lg-src">EONET/JTWC</span></div>
+  <div class="lg-row"><span class="badge9" style="background:var(--wf);box-shadow:0 0 7px var(--wf);"></span>Wildfire<span class="lg-src">EONET · 30d</span></div>
+  <div class="lg-row"><span class="badge9" style="background:var(--fl);box-shadow:0 0 7px var(--fl);"></span>Flood<span class="lg-src">EONET/GDACS</span></div>
+
+  <div class="lg-block">
+    <div class="lg-ramp">
+      <i style="background:#ffe98a"></i><i style="background:#ffc542"></i><i style="background:#ff9127"></i>
+      <i style="background:#ff5a2b"></i><i style="background:#ff2d55"></i><i style="background:#e0148c"></i>
+    </div>
+    <div class="lg-ticks"><span>M1</span><span>M3</span><span>M4.5</span><span>M6</span><span>M7+</span></div>
+    <div class="lg-scale">
+      <div><i class="lg-dot" style="width:5px;height:5px;background:#ffe98a;"></i><span>M2</span></div>
+      <div><i class="lg-dot" style="width:10px;height:10px;background:#ff9127;"></i><span>M4</span></div>
+      <div><i class="lg-dot" style="width:17px;height:17px;background:#ff2d55;"></i><span>M6</span></div>
+      <div><i class="lg-dot" style="width:25px;height:25px;background:#e0148c;"></i><span>M7+</span></div>
+    </div>
+  </div>
+
+  <div class="lg-note">ขนาดวง = แมกนิจูด · สีไล่ระดับเหลือง→แดง→ม่วงบานเย็น · วงแหวนคู่ = M6.0+</div>
+</div>
+
+<div class="status card ui-overlay">
+  <span class="live-dot"></span> Status: <span id="status">Loading...</span>
+</div>
+
+<div class="breaking ui-overlay">
   <span class="label">BREAKING</span>
   <div class="ticker" id="ticker"></div>
 </div>
 
-<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/openlocationcode/1.0.4/openlocationcode.min.js"></script>
-<script>
-    console.log("FILE LOADED");
-
-  const map = L.map('map', {
-    zoomControl: false
-  }).setView([13.7563, 100.5018], 4);
-
-  // มือถือ: เพิ่มปุ่ม +/- ซูมกลับมา เพราะ pinch-to-zoom อย่างเดียวใช้งานลำบากกว่าตอนมือถือถือด้วยมือเดียว
-  if (window.matchMedia('(max-width: 640px)').matches) {
-    L.control.zoom({ position: 'bottomright' }).addTo(map);
-  }
-
-  // มือถือ: ให้ legend เริ่มต้นแบบพับเก็บ ประหยัดพื้นที่จอ (คลิก/แตะเพื่อกางดูได้)
-  if (window.matchMedia('(max-width: 640px)').matches) {
-    document.querySelector('.legend').removeAttribute('open');
-  }
-
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-        attribution: '&copy; OpenStreetMap & Carto',
-    }).addTo(map);
-
-    const layers = {
-        earthquake: L.layerGroup().addTo(map),
-        wildfire: L.layerGroup().addTo(map),
-        flood: L.layerGroup().addTo(map)
-    };
-
-    function createMarker(lat, lng, type, popup, size) {
-      const COLORS = { eq: "#ff3b30", wf: "#ff9500", fl: "#30a0ff" };
-      const color = COLORS[type] || "#999";
-      const s = size || 14;
-      const hit = Math.max(s, 30); // ขยายพื้นที่แตะขั้นต่ำ 30px โดยไม่เปลี่ยนขนาดจุดที่มองเห็น (สำคัญมากบนมือถือ)
-
-      // pulse ring แสดงเฉพาะ earthquake ขนาดใหญ่ (>= 20px = mag ~4+)
-      const showPulse = (type === "eq" && s >= 20);
-      const ringSize = s * 2.5;
-      const ringOffset = -(ringSize - s) / 2;
-
-      const dotHtml = `
-        <div style="position:relative; width:${s}px; height:${s}px;">
-          ${showPulse ? `
-          <div class="pulse-ring" style="
-            width:${ringSize}px; height:${ringSize}px;
-            border: 2px solid ${color};
-            top:${ringOffset}px; left:${ringOffset}px;
-          "></div>` : ''}
-          <div style="
-            width:${s}px; height:${s}px;
-            background: radial-gradient(circle at 35% 35%, ${color}ff, ${color}99);
-            border-radius: 50%;
-            box-shadow: 0 0 ${Math.round(s * 0.7)}px ${color}cc,
-                        0 0 ${Math.round(s * 1.4)}px ${color}44;
-            border: ${s >= 20 ? 2 : 1.5}px solid rgba(255,255,255,0.6);
-            position: absolute; top:0; left:0;
-          "></div>
-        </div>`;
-
-      const html = `
-        <div style="width:${hit}px; height:${hit}px; display:flex; align-items:center; justify-content:center;">
-          ${dotHtml}
-        </div>`;
-
-      const icon = L.divIcon({
-        html,
-        className: '',
-        iconSize: [hit, hit],
-        iconAnchor: [hit / 2, hit / 2]
-      });
-
-      const popupMaxWidth = window.innerWidth < 400 ? 200 : 260;
-      return L.marker([lat, lng], { icon }).bindPopup(popup, { maxWidth: popupMaxWidth, autoPanPadding: [16, 16] });
-    }
-    async function loadAlerts(eqDataPromise) {
-        //console.log("loadAlerts RUNNING 🔥");
-        let alerts = [];
-
-        // ยิง earthquake + EONET พร้อมกัน (เดิมรอทีละอันเรียงกัน)
-        // ถ้ามี eqDataPromise ที่ loadData() กำลังยิงอยู่แล้ว ใช้อันเดียวกันเลย ไม่ fetch ซ้ำ
-        const [eqData, eonetData] = await Promise.all([
-          eqDataPromise || fetchJSON('https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.geojson'),
-          fetchJSON('https://eonet.gsfc.nasa.gov/api/v3/events?status=open')
-        ]);
-
-        //console.log(eqData);
-
-        if (typeof eqData !== 'undefined' && eqData && eqData.features) {
-            eqData.features
-                .filter(eq => eq.properties.mag >= 5)
-                .slice(0, 3)
-                .forEach(eq => {
-                alerts.push(`🌍 M${eq.properties.mag} - ${eq.properties.place}`);
-                });
-        }
-
-        // 🔥 + 🌊 EONET (เพิ่ม if เช็คว่า eonetData มีข้อมูลจริงไหมก่อนสไลซ์)
-        if (eonetData && eonetData.events && Array.isArray(eonetData.events)) {
-            eonetData.events.slice(0, 3).forEach(ev => {
-                alerts.push(`⚠️ ${ev.title}`);
-            });
-        } else {
-            console.log("⚠️ ไม่สามารถดึงไฮไลท์แจ้งเตือนจาก NASA ได้ชั่วคราว");
-        }
-
-        // ✂️ เอาแค่ 5 ข่าว
-        alerts = alerts.slice(0, 5);
-
-        updateTicker(alerts);
-        //console.log(alerts);
-      }
-  function updateTicker(alerts) {
-    //console.log("UPDATING TICKER", alerts);
-    const ticker = document.getElementById('ticker');
-
-    ticker.innerHTML = `<span>${alerts.join("  •  ")}</span>`;
-   }
-   
-  let lastAlerts = [];
-
-  async function fetchJSON(url) {
-    const res = await fetch(url);
-    return res.json();
-  }
-
-  // ── Global geocoding ─────────────────────────────────────────
-  const GEOCODE_API_KEY = '69fdad57cf850933585115gmlce2259';
-  const geoCache = {};
-
-  async function reverseGeocode(lat, lng) {
-    const key = `${lat.toFixed(2)},${lng.toFixed(2)}`;
-    if (geoCache[key]) return geoCache[key];
-
-    try {
-      const r = await fetch(
-        `https://geocode.maps.co/reverse?lat=${lat}&lon=${lng}&api_key=${GEOCODE_API_KEY}`
-      );
-      if (r.ok) {
-        const d = await r.json();
-        const a = d.address || {};
-        const province = a.county || a.state_district || a.province
-                      || a.state || a.country || null;
-        const country  = a.country || '';
-        if (province) {
-          const result = { province, country };
-          geoCache[key] = result;
-          return result;
-        }
-      }
-    } catch(e) { console.warn('Geocode error:', e); }
-
-    const result = { province: null, country: '' };
-    geoCache[key] = result;
-    return result;
-  }
-  // ─────────────────────────────────────────────────────────────
-
-  // ── Background geocode queue ────────────────────────────────
-  // ทุก geocode call (wildfire + flood) วิ่งผ่านคิวนี้ที่เดียว เว้นจังหวะ 1.1 วิ/ครั้ง
-  // เพื่อไม่ชน rate limit ของ geocode.maps.co แต่ทำงานแยกจาก loadData() โดยสิ้นเชิง
-  // ทำให้ marker ทุกจุดขึ้นและ status เป็น "Live" ได้ทันทีโดยไม่ต้องรอคิวนี้เลย
-  const geoQueue = [];
-  let geoQueueRunning = false;
-
-  function queueGeocode(task) {
-    geoQueue.push(task);
-    runGeoQueue();
-  }
-
-  async function runGeoQueue() {
-    if (geoQueueRunning) return;
-    geoQueueRunning = true;
-    while (geoQueue.length) {
-      const task = geoQueue.shift();
-      try { await task(); } catch (e) { console.warn('Geo queue task error:', e); }
-      await new Promise(r => setTimeout(r, 1100));
-    }
-    geoQueueRunning = false;
-  }
-  // ─────────────────────────────────────────────────────────────
-
-  function makeFloodPopup(title, locationLine, eventDate, mapsUrl) {
-    return `
-      <div style="line-height:1.6; min-width:210px;">
-        <strong style="font-size:14px; color:#30a0ff;">🌊 ${title}</strong><br>
-        <hr style="margin:4px 0; border-color:rgba(255,255,255,0.1);">
-        📍 ${locationLine}<br>
-        ${eventDate ? `🗓 ${eventDate}<br>` : ''}
-        <a href="${mapsUrl}" target="_blank" style="font-size:12px; color:#30a0ff;">ดูบน Google Maps →</a>
-      </div>`;
-  }
-
-  function pinFlood(lat, lng, title, eventDate, layer) {
-    const plusCode = OpenLocationCode.encode(lat, lng, 10);
-    const mapsUrl = `https://www.google.com/maps/search/${encodeURIComponent(plusCode)}`;
-    const key = `${lat.toFixed(2)},${lng.toFixed(2)}`;
-    const cached = geoCache[key];
-
-    const initLine = cached?.province
-      ? `${cached.province}${cached.country && cached.country !== cached.province
-          ? ` <span style="color:rgba(200,210,255,0.5);font-size:11px;">(${cached.country})</span>` : ''}`
-      : `<span style="color:rgba(200,210,255,0.5);font-size:12px;">${lat.toFixed(3)}°, ${lng.toFixed(3)}°</span>`;
-
-    const m = createMarker(lat, lng, 'fl', makeFloodPopup(title, initLine, eventDate, mapsUrl));
-    m.addTo(layer);
-
-    if (!cached) {
-      queueGeocode(async () => {
-        const geo = await reverseGeocode(lat, lng);
-        if (geo.province) {
-          const locLine = `${geo.province}${geo.country && geo.country !== geo.province
-            ? ` <span style="color:rgba(200,210,255,0.5);font-size:11px;">(${geo.country})</span>` : ''}`;
-          m.setPopupContent(makeFloodPopup(title, locLine, eventDate, mapsUrl));
-        }
-      });
-    }
-    return m;
-  }
-
-  function makeWildfirePopup(title, locationLine, eventDate, mapsUrl) {
-    return `
-      <div style="line-height:1.6; min-width:210px;">
-        <strong style="font-size:14px; color:#ff9500;">🔥 ${title}</strong><br>
-        <hr style="margin:4px 0; border-color:rgba(255,255,255,0.1);">
-        📍 ${locationLine}<br>
-        ${eventDate ? `🗓 ${eventDate}<br>` : ''}
-        <a href="${mapsUrl}" target="_blank" style="font-size:12px; color:#ff9500;">ดูบน Google Maps →</a>
-      </div>`;
-  }
-
-  function updateWildfirePopup(m, lat, lng, title, eventDate, mapsUrl) {
-    return async () => {
-      const geo = await reverseGeocode(lat, lng);
-      if (geo.province) {
-        const locLine = `${geo.province}${geo.country && geo.country !== geo.province
-          ? ` <span style="color:rgba(200,210,255,0.5);font-size:11px;">(${geo.country})</span>` : ''}`;
-        m.setPopupContent(makeWildfirePopup(title, locLine, eventDate, mapsUrl));
-      }
-    };
-  }
-
-  // ── fetch พร้อม timeout + retry สำหรับ Flood API โดยเฉพาะ ──────
-  // ป้องกันไม่ให้ Flood API ที่ตอบช้าหรือค้าง ทำให้ loadData() ต้องรอนาน
-  async function fetchWithTimeoutRetry(url, { timeoutMs = 8000, retries = 2, retryDelayMs = 1000, fetchOpts = {} } = {}) {
-    let lastErr;
-    for (let attempt = 0; attempt <= retries; attempt++) {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), timeoutMs);
-      try {
-        const res = await fetch(url, { ...fetchOpts, signal: controller.signal });
-        clearTimeout(timer);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return await res.json();
-      } catch (err) {
-        clearTimeout(timer);
-        lastErr = err;
-        const isTimeout = err.name === 'AbortError';
-        console.warn(`⚠️ Flood fetch attempt ${attempt + 1}/${retries + 1} failed (${isTimeout ? 'timeout' : err.message}): ${url}`);
-        if (attempt < retries) {
-          await new Promise(r => setTimeout(r, retryDelayMs));
-        }
-      }
-    }
-    throw lastErr;
-  }
-  // ─────────────────────────────────────────────────────────────
-  async function loadFloods() {
-    layers.flood.clearLayers();
-    
-    // ฟังก์ชันเสริมสำหรับดึงข้อมูลสำรองจาก NASA EONET (กรณีที่ GDACS ไม่มีข้อมูล)
-    async function fetchFromReliefWeb() {
-      console.log('🌊 GDACS ไม่มีข้อมูล -> สลับมาดึงข้อมูลจาก NASA EONET (Water/Storm Events) แทน...');
-      
-      // ดึงข้อมูลภัยพิบัติประเภทน้ำท่วมและพายุ (Severe Storms / Floods) จาก NASA 
-      const url = "https://eonet.gsfc.nasa.gov/api/v3/events?category=severeStorms&status=open&days=30";
-      const res = await fetch(url);
-      if (!res.ok) throw new Error("NASA EONET Water API Error status: " + res.status);
-      
-      const data = await res.json();
-      let count = 0;
-
-      if (data && data.events && Array.isArray(data.events)) {
-        data.events.forEach(ev => {
-          const g = ev.geometry ? ev.geometry[0] : null;
-          if (!g) return;
-
-          const [lng, lat] = g.coordinates;
-          if (!isNaN(lat) && !isNaN(lng)) {
-            const title = ev.title || "Water/Storm Event";
-            const link = ev.sources && ev.sources[0] ? ev.sources[0].url : "#";
-            const eventDate = g.date ? g.date.split('T')[0] : '';
-
-            const popupContent = `
-              <div style="line-height:1.6; min-width:200px; font-family: 'Barlow', sans-serif;">
-                <strong style="font-size:15px; color: var(--fl);">🌊 ${title} (NASA)</strong><br/>
-                <span style="font-size:12px; color:#aaa;">วันที่รายงาน: ${eventDate}</span><br/>
-                <div style="margin-top:6px; display:flex; gap:8px; font-size:11px;">
-                  <a href="${link}" target="_blank" style="color:#30a0ff; text-decoration:underline;">แหล่งข้อมูลจาก NASA →</a>
-                </div>
-              </div>
-            `;
-
-            let m = L.circleMarker([lat, lng], {
-              radius: 8,
-              fillColor: 'var(--fl)',
-              color: '#fff',
-              weight: 1,
-              opacity: 0.8,
-              fillOpacity: 0.6
-            }).bindPopup(popupContent);
-            
-            m.addTo(layers.flood);
-            count++;
-          }
-        });
-      }
-      return count;
-    }
-
-    // --- เริ่มการทำงานหลัก (ลองดึงจาก GDACS ก่อน) ---
-    try {
-      console.log('🌊 [1/2] กำลังลองดึงข้อมูล Flood จาก GDACS GeoRSS Feed...');
-      
-      const targetUrl = "https://www.gdacs.org/xml/rss_fl.xml";
-      const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
-      
-      const res = await fetch(proxyUrl);
-      if (!res.ok) throw new Error("GDACS HTTP Error status: " + res.status);
-      
-      const str = await res.text();
-      const parser = new DOMParser();
-      const xmlDoc = parser.parseFromString(str, "text/xml");
-      const items = xmlDoc.getElementsByTagName("item");
-
-      let floodCount = 0;
-
-      for (let i = 0; i < items.length; i++) {
-        const item = items[i];
-        let lat = null, lng = null;
-
-        // แกะพิกัด Namespace ของ GeoRSS จาก GDACS
-        const geoPoint = item.getElementsByTagNameNS("http://www.georss.org/georss", "point")[0]?.textContent;
-        if (geoPoint) {
-          const coords = geoPoint.trim().split(/\s+/);
-          lat = parseFloat(coords[0]);
-          lng = parseFloat(coords[1]);
-        }
-
-        if (lat !== null && lng !== null && !isNaN(lat) && !isNaN(lng)) {
-          const title = item.getElementsByTagName("title")[0]?.textContent || "GDACS Flood Event";
-          const description = item.getElementsByTagName("description")[0]?.textContent || "";
-          const link = item.getElementsByTagName("link")[0]?.textContent || "#";
-          const pubDate = item.getElementsByTagName("pubDate")[0]?.textContent || "";
-          
-          const popupContent = `
-            <div style="line-height:1.6; min-width:180px; font-family: 'Barlow', sans-serif;">
-              <strong style="font-size:15px; color: var(--fl);">🌊 ${title} (GDACS)</strong><br/>
-              <span style="font-size:12px; color:#aaa;">วันที่รายงาน: ${pubDate}</span><br/>
-              <p style="margin:6px 0; font-size:12px; max-height:80px; overflow-y:auto; color:#b0c4de;">${description}</p>
-              <div style="margin-top:6px; display:flex; gap:8px; font-size:11px;">
-                <a href="${link}" target="_blank" style="color:#30a0ff; text-decoration:underline;">รายละเอียด (GDACS)</a>
-              </div>
-            </div>
-          `;
-
-          let m = L.circleMarker([lat, lng], {
-            radius: 8,
-            fillColor: 'var(--fl)',
-            color: '#fff',
-            weight: 1,
-            opacity: 0.8,
-            fillOpacity: 0.6
-          }).bindPopup(popupContent);
-          
-          m.addTo(layers.flood);
-          floodCount++;
-        }
-      }
-
-      // ตรวจสอบผลลัพธ์ของ GDACS
-      if (floodCount > 0) {
-        console.log(`✅ โหลดข้อมูลน้ำท่วมจาก GDACS สำเร็จทั้งหมด: ${floodCount} จุด`);
-        const floodBadge = document.getElementById('flCount');
-        if (floodBadge) floodBadge.innerText = floodCount;
-      } else {
-        // เงื่อนไขสำคัญ: ถ้า GDACS สำเร็จแต่ได้ 0 จุด ให้ไปดึง ReliefWeb มาเติมเต็ม
-        console.log(`ℹ️ GDACS ดึงได้ 0 จุด (ไม่มีภัยพิบัติใหม่บนระบบ)`);
-        const rwCount = await fetchFromReliefWeb();
-        console.log(`✅ สลับมาดึงข้อมูล NASA EONET สำเร็จ: ${rwCount} จุด`);
-        const floodBadge = document.getElementById('flCount');
-        if (floodBadge) floodBadge.innerText = rwCount;
-      }
-
-    } catch (err) {
-      console.error('❌ ดึงข้อมูล GDACS ล้มเหลว (CORS/Network) -> ข้ามไปใช้ ReliefWeb สำรอง:', err);
-      // กรณี GDACS ล่มกลางทาง (เช่นเน็ตพังหรือพร็อกซี่มีปัญหา) ก็ให้วิ่งไปหา ReliefWeb ทันที
-      try {
-        const rwCount = await fetchFromReliefWeb();
-        console.log(`✅ [Fallback] โหลดข้อมูลน้ำท่วมจาก ReliefWeb สำเร็จ: ${rwCount} จุด`);
-        const floodBadge = document.getElementById('flCount');
-        if (floodBadge) floodBadge.innerText = rwCount;
-      } catch (rwErr) {
-        console.error('❌ พังหมดทั้งสองระบบ (GDACS & ReliefWeb):', rwErr);
-      }
-    }
-  }
-  // async function loadFloods() {
-  //   layers.flood.clearLayers();
-  //   try {
-  //     // ✅ เรียกข้อมูล Flood สดโดยตรงจาก EONET (live API) เป็นแหล่งหลัก
-  //     const data = await fetchWithTimeoutRetry(
-  //       'https://eonet.gsfc.nasa.gov/api/v3/events?category=floods&status=open',
-  //       { timeoutMs: 8000, retries: 2, retryDelayMs: 1200 }
-  //     );
-
-  //     if (data.events && data.events.length > 0) {
-  //       const jobs = [];
-  //       for (const flood of data.events) {
-  //         const g = flood.geometry[0];
-  //         if (!g) continue;
-  //         const [lng, lat] = g.coordinates;
-  //         const eventDate = g.date ? g.date.split('T')[0] : '';
-  //         jobs.push({ lat, lng, title: flood.title, eventDate });
-  //       }
-
-  //       // ปัก marker ทั้งหมดทันที ไม่มี delay ในลูปนี้เลย — geocode วิ่งผ่านคิวเบื้องหลังแยกต่างหาก
-  //       for (const job of jobs) {
-  //         pinFlood(job.lat, job.lng, job.title, job.eventDate, layers.flood);
-  //       }
-  //       console.log(`✅ Flood (EONET live): ${jobs.length} เหตุการณ์`);
-  //     } else {
-  //       console.log('ℹ️ Flood (EONET live): ไม่มีเหตุการณ์เปิดอยู่ → ใช้ fallback (result.geojson)');
-  //       await loadFloodsFromGDACS();
-  //     }
-  //   } catch (err) {
-  //     console.error('❌ EONET Flood error (หมด retry แล้ว) → fallback (result.geojson):', err.message);
-  //     await loadFloodsFromGDACS();
-  //   }
-  // }
-
-  // // ⚠️ Fallback เท่านั้น — ใช้เมื่อ EONET live API ล้มเหลวหรือไม่มีข้อมูล
-  // // result.geojson เป็นไฟล์สแนปช็อตสำรอง ไม่ใช่แหล่งข้อมูลหลักอีกต่อไป
-  // async function loadFloodsFromGDACS() {
-  //   try {
-  //     const data = await fetchWithTimeoutRetry(
-  //       "result.geojson?t=" + Date.now(),
-  //       { timeoutMs: 5000, retries: 1, retryDelayMs: 800, fetchOpts: { cache: 'no-store' } }
-  //     );
-
-  //     const today = new Date();
-  //     const daysInCurrentMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
-  //     const endDate = new Date(today.getFullYear(), today.getMonth(), daysInCurrentMonth);
-
-  //     // const startDate = new Date("2026-06-01");
-  //     // const endDate = new Date("2026-07-31");
-  //     const startDate = new Date(endDate);
-  //     startDate.setDate(endDate.getDate() - 60);
-  //     console.log(`🌊 Flood (fallback result.geojson) กรองช่วง: ${startDate.toLocaleDateString('th-TH')} - ${endDate.toLocaleDateString('th-TH')}`);
-
-  //     const filtered = data.features.filter(f => {
-  //       const eventTime = new Date(f.properties.datemodified);
-  //       return (
-  //         f.properties.eventtype === "FL" &&
-  //         f.properties.alertlevel === "Orange" &&
-  //         eventTime >= startDate &&
-  //         eventTime <= endDate
-  //       );
-  //     });
-
-  //     console.log(`✅ Flood (fallback result.geojson): ${filtered.length} เหตุการณ์ (จากทั้งหมด ${data.features.length})`);
-
-  //     for (const f of filtered) {
-  //       const [lng, lat] = f.geometry.coordinates;
-  //       if (!isNaN(lat) && !isNaN(lng)) {
-  //         const props = f.properties;
-  //         const eventDate = props.datemodified ? props.datemodified.split('T')[0] : '';
-  //         // GDACS มีชื่อประเทศอยู่แล้ว ไม่ต้อง geocode ซ้ำ
-  //         const plusCode = OpenLocationCode.encode(lat, lng, 10);
-  //         const mapsUrl = `https://www.google.com/maps/search/${encodeURIComponent(plusCode)}`;
-  //         const locLine = `${props.name || ''}${props.country ? `, ${props.country}` : ''}`;
-  //         const m = createMarker(lat, lng, 'fl', makeFloodPopup(props.name || 'Flood', locLine, eventDate, mapsUrl));
-  //         m.addTo(layers.flood);
-  //       }
-  //     }
-  //   } catch (err) {
-  //     console.error("GDACS ERROR:", err);
-  //   }
-  // }
-
-  async function loadData(eqDataPromise) {
-    document.getElementById('status').innerText = "Updating...";
-    document.getElementById('spinner').style.display = 'inline-block';
-
-    layers.earthquake.clearLayers();
-    layers.wildfire.clearLayers();
-    layers.flood.clearLayers();
-
-    // ยิงทั้ง 3 แหล่งข้อมูลพร้อมกันตั้งแต่ต้น (เดิมรอ eq → wildfire → flood เรียงกัน)
-    const floodsPromise = loadFloods();
-    const wfPromise = fetchJSON('https://eonet.gsfc.nasa.gov/api/v3/events?category=wildfires&status=all&days=30');
-
-    // 🌍 Earthquake — ใช้ promise ที่ยิงไว้แล้วตอนโหลดหน้าเว็บครั้งแรก ถ้ามี ไม่ fetch ซ้ำ
-    const eqData = await (eqDataPromise || fetchJSON('https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.geojson'));
-
-    eqData.features.forEach(eq => {
-      const [lng, lat] = eq.geometry.coordinates;
-      const mag = eq.properties.mag || 0;
-      // scale marker size เหมือนเว็บ USGS: mag 1=8px, mag 5=20px, mag 8+=36px
-      // mag scale: <1=6px, 3=12px, 5=22px, 7=34px, 8+=42px
-      // const size = mag <= 0 ? 6 : Math.round(Math.max(6, Math.min(42, Math.pow(mag, 1.6) * 3.2 + 4)));
-      let size;
-      if (mag <= 1) {
-        size = 6;         // Smallest size for low magnitude
-      } else if (mag >= 1 && mag < 3) {
-        size = 12;        // Medium size
-      } else if (mag >= 3 && mag < 5) {
-        size = 22;        // Large size
-      } else if (mag >= 5 && mag < 7) {
-        size = 36;        // Very Large size
-      } else { // mag >= 7
-        size = 42;        // Largest size for high magnitude
-      }
-
-      const time = eq.properties.time ? new Date(eq.properties.time).toLocaleString('th-TH') : '-';
-      const depth = eq.geometry.coordinates[2]?.toFixed(1) ?? '-';
-      const popup = `
-        <div style="line-height:1.6; min-width:180px;">
-          <strong style="font-size:15px; color:#ff3b30;">🌍 Magnitude ${mag}</strong><br>
-          <hr style="margin:4px 0;">
-          📍 ${eq.properties.place}<br>
-          🕐 ${time}<br>
-          📏 ความลึก: ${depth} km<br>
-          <a href="${eq.properties.url}" target="_blank" style="font-size:12px;">ดูรายละเอียด USGS →</a>
-        </div>`;
-      const m = createMarker(lat, lng, 'eq', popup, size);
-      m.addTo(layers.earthquake);
-    });
-
-    // 🔥 Wildfire — request ยิงไปพร้อมกับ eq/flood ด้านบนแล้ว แค่มารอผลตรงนี้
-    const wfData = await wfPromise;
-
-    // ปัก marker ทันทีด้วยพิกัดก่อน แล้วค่อย geocode หาชื่อจังหวัด/ประเทศแบบ background
-    if (wfData && wfData.events && Array.isArray(wfData.events)) {
-        for (const f of wfData.events) {
-          const g = f.geometry[0];
-          if (!g) continue;
-          const [lng, lat] = g.coordinates;
-          const eventDate = g.date ? g.date.split('T')[0] : '';
-          const plusCode = OpenLocationCode.encode(lat, lng, 10);
-          const mapsUrl = `https://www.google.com/maps/search/${encodeURIComponent(plusCode)}`;
-          const key = `${lat.toFixed(2)},${lng.toFixed(2)}`;
-
-          // ถ้ามี cache อยู่แล้วใช้ได้ทันที ไม่มีก็ขึ้นพิกัดไปก่อนแล้วอัปเดตทีหลัง
-          const cached = geoCache[key];
-          const locationLine = cached?.province
-            ? `${cached.province}${cached.country && cached.country !== cached.province
-                ? ` <span style="color:rgba(200,210,255,0.5);font-size:11px;">(${cached.country})</span>`
-                : ''}`
-            : `<span style="color:rgba(200,210,255,0.5);font-size:12px;">${lat.toFixed(3)}°, ${lng.toFixed(3)}°</span>`;
-
-          const m = createMarker(lat, lng, 'wf', makeWildfirePopup(f.title, locationLine, eventDate, mapsUrl));
-          m.addTo(layers.wildfire);
-
-          // geocode แบบไม่บล็อกลูปเลย — เข้าคิวเบื้องหลังแยกต่างหาก
-          if (!cached) {
-            queueGeocode(updateWildfirePopup(m, lat, lng, f.title, eventDate, mapsUrl));
-          }
-        }
-    } else {
-        console.log("⚠️ ไม่สามารถโหลดข้อมูลไฟป่าได้เนื่องจากเซิร์ฟเวอร์ NASA มีปัญหา");
-    }
-
-    // 🌊 Flood — request ยิงไปพร้อมกับอันอื่นตั้งแต่ต้นฟังก์ชันแล้ว ไม่ await ตรงนี้
-    // เพื่อไม่ให้ Flood ที่โหลดช้า (หรือ timeout/retry) บล็อก Earthquake/Wildfire และ Status "Live"
-    floodsPromise
-      .then(() => console.log('🌊 Flood loading เสร็จสิ้น (แบบไม่บล็อก status)'))
-      .catch(err => console.error('❌ Flood loading ล้มเหลวทั้งหมด (EONET + fallback):', err));
-
-    document.getElementById('status').innerText = "Live";
-    document.getElementById('spinner').style.display = 'none';
-    const nowStr = new Date().toLocaleTimeString();
-    document.getElementById('time').innerText = nowStr;
-    document.getElementById('time-mobile').innerText = nowStr;
-  }
-
-  // Toggle layer
-  document.getElementById('eqToggle').onchange = e => {
-    e.target.checked ? map.addLayer(layers.earthquake) : map.removeLayer(layers.earthquake);
-  };
-  document.getElementById('wfToggle').onchange = e => {
-    e.target.checked ? map.addLayer(layers.wildfire) : map.removeLayer(layers.wildfire);
-  };
-  document.getElementById('flToggle').onchange = e => {
-    e.target.checked ? map.addLayer(layers.flood) : map.removeLayer(layers.flood);
-  };
-
-  // โหลดครั้งแรก: ยิง earthquake ครั้งเดียว แชร์ผลลัพธ์ให้ทั้ง loadData และ loadAlerts ใช้ร่วมกัน
-  const initialEqPromise = fetchJSON('https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.geojson');
-  loadData(initialEqPromise);
-  loadAlerts(initialEqPromise);
-  setInterval(() => { loadData(); loadAlerts(); }, 300000);
-  
-</script>
+<!-- ══ BROADCAST UI ══ -->
+<div class="bc-exit bc-only ui-overlay" id="bcExit">✕ ออกจากโหมด Broadcast <span class="kbd">ESC</span></div>
+<div class="bc-stats bc-only ui-overlay" id="bcStats"></div>
+
+<div class="bc-lower bc-only ui-overlay" id="bcLower">
+  <div class="bc-accent"></div>
+  <div class="bc-body">
+    <div class="bc-kicker" id="bcKicker">—</div>
+    <div class="bc-title" id="bcTitle">กำลังโหลดข้อมูล…</div>
+    <div class="bc-sub" id="bcSub"></div>
+  </div>
+</div>
+
+<div class="bc-clock bc-only ui-overlay">
+  <div class="t" id="bcTime">--:--:--</div>
+  <div class="z" id="bcZone">LOCAL · UTC</div>
+</div>
+
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/openlocationcode/1.0.4/openlocationcode.min.js"></script>
+<script defer src="app.js"></script>
 
 </body>
 </html>
